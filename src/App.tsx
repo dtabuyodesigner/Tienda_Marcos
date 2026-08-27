@@ -1,62 +1,87 @@
 import { FormEvent, useEffect, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
+import { attachTicketPhoto, createClient, createPayment, createTicket, loadClientHistory, loadDashboard, signedPhotoUrl, voidMovement, type Client, type ClientSummary, type Payment, type Ticket } from './lib/data'
+import { canRegisterPayment, formatCents, parseEuroToCents, searchClients } from './lib/money'
+
+type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'history'
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setLoading(false)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
-    })
-
+    void supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false) })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
     return () => listener.subscription.unsubscribe()
   }, [])
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError('')
-    setLoading(true)
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
-    if (loginError) setError('No se pudo iniciar sesión. Revisa tus datos.')
-    setLoading(false)
-  }
-
   if (loading) return <main className="shell"><p>Cargando sesión...</p></main>
-  if (session) {
-    return (
-      <main className="shell">
-        <section className="panel">
-          <p className="eyebrow">La Libreta de Marcos</p>
-          <h1>Sesión activa</h1>
-          <p className="muted">{session.user.email}</p>
-          <button onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button>
-        </section>
-      </main>
-    )
-  }
-
-  return (
-    <main className="shell">
-      <section className="panel">
-        <p className="eyebrow">La Libreta de Marcos</p>
-        <h1>Iniciar sesión</h1>
-        <form onSubmit={handleLogin}>
-          <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-          {error && <p className="error" role="alert">{error}</p>}
-          <button type="submit" disabled={loading}>Entrar</button>
-        </form>
-      </section>
-    </main>
-  )
+  return session ? <Workspace user={session.user} /> : <Login />
 }
+
+function Login() {
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('')
+  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); const { error: loginError } = await supabase.auth.signInWithPassword({ email, password }); if (loginError) setError('No se pudo iniciar sesión. Revisa tus datos.'); setBusy(false) }
+  return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Tu tienda, en orden.</h1><p className="muted">Accede para gestionar tus compras fiadas.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Entrando...' : 'Iniciar sesión'}</button></form></section></main>
+}
+
+function Workspace({ user }: { user: User }) {
+  const [view, setView] = useState<View>('home'); const [clients, setClients] = useState<ClientSummary[]>([]); const [total, setTotal] = useState(0); const [selectedClient, setSelectedClient] = useState<Client | ClientSummary | null>(null); const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null); const [notice, setNotice] = useState(''); const [refreshing, setRefreshing] = useState(true)
+  async function refresh() { setRefreshing(true); try { const dashboard = await loadDashboard(user); setClients(dashboard.clients); setTotal(dashboard.total); setNotice('') } catch { setNotice('No se pudieron cargar los datos.') } finally { setRefreshing(false) } }
+  useEffect(() => { void refresh() }, [])
+  function openClient(client: Client | ClientSummary) { setSelectedClient(client); setView('client') }
+  if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
+  return <main className="app-shell"><header className="topbar"><div><p className="eyebrow">La Libreta de Marcos</p><strong>Hoy, con calma.</strong></div><button className="text-button" onClick={() => void supabase.auth.signOut()}>Salir</button></header><div className="content">{notice && <div className="notice error" role="alert">{notice}</div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => setView('new-client')} onBuy={() => setView('choose-client')} />}{view === 'new-client' && <NewClient user={user} onBack={() => setView('home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); void refresh(); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => setView('home')} onClient={(client) => { setSelectedClient(client); setView('purchase') }} onNew={() => setView('new-client')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => setView('choose-client')} onSaved={(ticket) => { setSelectedTicket(ticket); void refresh(); setNotice(`Compra apuntada. ${selectedClient.name} debe ahora ${formatCents(('balance' in selectedClient ? selectedClient.balance : 0) + ticket.amount_cents)}.`); setView('client') }} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} onBack={() => setView('home')} onBuy={() => setView('purchase')} onCharge={() => setView('charge')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} onHistory={() => setView('history')} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => setView('client')} onChanged={() => { void refresh(); setView('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => setView('client')} onPaid={() => { void refresh(); setView('client') }} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}</div></main>
+}
+
+function Home({ clients, total, busy, onClient, onNew, onBuy }: { clients: ClientSummary[]; total: number; busy: boolean; onClient: (client: ClientSummary) => void; onNew: () => void; onBuy: () => void }) {
+  const [query, setQuery] = useState(''); const visible = searchClients(clients, query)
+  return <><section className="hero"><div><span className="label">Pendiente de cobrar</span><strong>{formatCents(total)}</strong></div><button className="primary-action" onClick={onBuy}>+ Apuntar compra</button></section><div className="section-heading"><h2>Clientes</h2><button className="link-button" onClick={onNew}>Nuevo cliente</button></div><input className="search" placeholder="Buscar por nombre" value={query} onChange={(event) => setQuery(event.target.value)} />{busy ? <p className="muted">Actualizando...</p> : <div className="client-list">{visible.map((client) => <button className="client-row" key={client.id} onClick={() => onClient(client)}><span className="avatar">{client.name.charAt(0).toUpperCase()}</span><span className="client-name">{client.name}</span><strong className={client.balance > 0 ? 'debt' : 'paid'}>{formatCents(client.balance)}</strong></button>)}{visible.length === 0 && <p className="empty">No hay clientes que coincidan.</p>}</div>}</>
+}
+
+function NewClient({ user, onBack, onCreated }: { user: User; onBack: () => void; onCreated: (client: Client, continuePurchase: boolean) => void }) {
+  const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [continuePurchase, setContinuePurchase] = useState(false)
+  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { onCreated(await createClient(user, name, phone), continuePurchase) } catch { setError('No se pudo crear el cliente.') } finally { setBusy(false) } }
+  return <FormPage title="Nuevo cliente" onBack={onBack}><form onSubmit={submit}><label>Nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Teléfono <span className="muted">(opcional)</span><input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>{error && <p className="error">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : continuePurchase ? 'Crear y continuar' : 'Crear cliente'}</button><label className="check"><input type="checkbox" checked={continuePurchase} onChange={(event) => setContinuePurchase(event.target.checked)} /> Crear y continuar con una compra</label></form></FormPage>
+}
+
+function ChooseClient({ clients, onBack, onClient, onNew }: { clients: ClientSummary[]; onBack: () => void; onClient: (client: ClientSummary) => void; onNew: () => void }) {
+  const [query, setQuery] = useState(''); return <FormPage title="¿A quién se lo apuntamos?" onBack={onBack}><input autoFocus className="search" placeholder="Buscar cliente" value={query} onChange={(event) => setQuery(event.target.value)} /><div className="client-list">{searchClients(clients, query).map((client) => <button className="client-row" key={client.id} onClick={() => onClient(client)}><span className="avatar">{client.name.charAt(0)}</span><span className="client-name">{client.name}</span><strong className="debt">{formatCents(client.balance)}</strong></button>)}</div><button className="secondary-action" onClick={onNew}>+ Nuevo cliente</button></FormPage>
+}
+
+function Purchase({ user, client, onBack, onSaved }: { user: User; client: Client | ClientSummary; onBack: () => void; onSaved: (ticket: Ticket) => void }) {
+  const [amount, setAmount] = useState(''); const [concept, setConcept] = useState(''); const [photo, setPhoto] = useState<File | null>(null); const [existingTicket, setExistingTicket] = useState<Ticket | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('')
+  async function submit(event: FormEvent) { event.preventDefault(); const cents = parseEuroToCents(amount); if (cents === null) { setError('Introduce un importe válido, por ejemplo 18,40.'); return } setBusy(true); setError(''); try { let ticket = await createTicket(user, client.id, cents, concept); setExistingTicket(ticket); if (photo) ticket = await attachTicketPhoto(ticket, photo); onSaved(ticket) } catch { setError('El ticket existe, pero la fotografía no se pudo guardar. Elige otra foto y reintenta sin crear otra compra.') } finally { setBusy(false) } }
+  async function retryPhoto() { if (!existingTicket || !photo) return; setBusy(true); setError(''); try { onSaved(await attachTicketPhoto(existingTicket, photo)) } catch { setError('No se pudo guardar la fotografía. Puedes volver a intentarlo.') } finally { setBusy(false) } }
+  return <FormPage title="Nueva compra" onBack={onBack}><div className="selected"><span className="avatar">{client.name.charAt(0)}</span><strong>{client.name}</strong></div><form onSubmit={submit}><label>Importe<input inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} required disabled={Boolean(existingTicket)} /></label><label>Concepto <span className="muted">(opcional)</span><input value={concept} onChange={(event) => setConcept(event.target.value)} disabled={Boolean(existingTicket)} /></label><label className="photo-input">Fotografía <span className="muted">(opcional)</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /></label>{photo && <p className="muted">Foto preparada: {photo.name}</p>}{error && <p className="error">{error}</p>}{existingTicket ? <button type="button" disabled={busy || !photo} onClick={() => void retryPhoto()}>{busy ? 'Reintentando...' : 'Reintentar fotografía'}</button> : <button disabled={busy}>{busy ? 'Guardando...' : 'Guardar compra'}</button>}</form></FormPage>
+}
+
+function ClientPage({ user, client, onBack, onBuy, onCharge, onTicket, onHistory }: { user: User; client: Client | ClientSummary; onBack: () => void; onBuy: () => void; onCharge: () => void; onTicket: (ticket: Ticket) => void; onHistory: () => void }) {
+  const [data, setData] = useState<{ tickets: Ticket[]; payments: Payment[]; balance: number } | null>(null); const [error, setError] = useState('')
+  useEffect(() => { void loadClientHistory(user, client.id).then(setData).catch(() => setError('No se pudo cargar la ficha.')) }, [user, client.id])
+  return <FormPage title={client.name} onBack={onBack}><div className="balance-card"><span className="label">Deuda actual</span><strong>{formatCents(data?.balance ?? ('balance' in client ? client.balance : 0))}</strong></div><div className="actions"><button className="primary-action" onClick={onBuy}>+ Nueva compra</button><button className="secondary-action" onClick={onCharge}>Cobrar</button></div><div className="section-heading"><h2>Movimientos</h2><button className="link-button" onClick={onHistory}>Ver historial</button></div>{error && <p className="error">{error}</p>}{data?.tickets.filter((ticket) => ticket.status === 'active').map((ticket) => <button className="movement" key={ticket.id} onClick={() => onTicket(ticket)}><span><b>{formatDate(ticket.created_at)}</b><small>{ticket.concept || 'Compra'} {ticket.photo_path ? ' · Foto' : ''}</small></span><strong className="debt">+ {formatCents(ticket.amount_cents)}</strong></button>)}{data?.payments.filter((payment) => !payment.voided_at).map((payment) => <PaymentRow key={payment.id} user={user} payment={payment} onChanged={() => void loadClientHistory(user, client.id).then(setData)} />)}{!data && <p className="muted">Cargando movimientos...</p>}</FormPage>
+}
+
+function PaymentRow({ user, payment, onChanged }: { user: User; payment: Payment; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+  async function cancel() { const reason = window.prompt('Motivo de anulación del pago')?.trim(); if (!reason || !window.confirm('¿Anular este pago? Se conservará en el historial.')) return; setBusy(true); try { await voidMovement(user, 'payments', payment.id, reason); onChanged() } finally { setBusy(false) } }
+  return <div className="movement payment"><span><b>{formatDate(payment.created_at)}</b><small>Pago recibido</small></span><strong className="paid">- {formatCents(payment.amount_cents)}</strong><button className="icon-button" disabled={busy} onClick={() => void cancel()} aria-label="Anular pago" title="Anular pago">×</button></div>
+}
+
+function TicketPage({ user, ticket, onBack, onChanged }: { user: User; ticket: Ticket; onBack: () => void; onChanged: () => void }) {
+  const [photoUrl, setPhotoUrl] = useState(''); const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('')
+  useEffect(() => { if (ticket.photo_path) void signedPhotoUrl(ticket.photo_path).then(setPhotoUrl).catch(() => setError('No se pudo cargar la fotografía.')) }, [ticket.photo_path])
+  async function cancel() { if (!reason.trim() || !window.confirm('¿Anular este ticket? Se conservará en el historial.')) return; setBusy(true); try { await voidMovement(user, 'tickets', ticket.id, reason); onChanged() } catch { setError('No se pudo anular el ticket.') } finally { setBusy(false) } }
+  return <FormPage title="Detalle del ticket" onBack={onBack}><div className="detail"><span className="label">{formatDate(ticket.created_at)} · {ticket.status === 'voided' ? 'Anulado' : 'Activo'}</span><strong>{formatCents(ticket.amount_cents)}</strong><p>{ticket.concept || 'Sin concepto'}</p>{photoUrl && <img className="ticket-photo" src={photoUrl} alt="Fotografía del ticket" />}</div>{ticket.status === 'active' && <><label>Motivo de anulación<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Necesario para anular" /></label>{error && <p className="error">{error}</p>}<button className="danger-action" disabled={busy || !reason.trim()} onClick={() => void cancel()}>{busy ? 'Anulando...' : 'Anular ticket'}</button></>}</FormPage>
+}
+
+function Charge({ user, client, onBack, onPaid }: { user: User; client: Client | ClientSummary; onBack: () => void; onPaid: () => void }) {
+  const [balance, setBalance] = useState(0); const [amount, setAmount] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('')
+  useEffect(() => { void loadClientHistory(user, client.id).then((data) => setBalance(data.balance)).catch(() => setError('No se pudo cargar la deuda.')) }, [user, client.id])
+  async function pay(value: number) { if (!canRegisterPayment(balance, value)) { setError('El importe debe ser mayor que cero y no superar la deuda.'); return } setBusy(true); try { await createPayment(user, client.id, value); onPaid() } catch { setError('No se pudo registrar el pago.') } finally { setBusy(false) } }
+  return <FormPage title="Cobrar" onBack={onBack}><div className="balance-card"><span className="label">Deuda de {client.name}</span><strong>{formatCents(balance)}</strong></div><div className="actions"><button disabled={busy || balance <= 0} onClick={() => void pay(balance)}>Paga todo</button><button className="secondary-action" disabled={busy} onClick={() => void pay(parseEuroToCents(amount) ?? 0)}>Paga una parte</button></div><label>Importe parcial<input inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>{error && <p className="error">{error}</p>}</FormPage>
+}
+
+function History({ user, client, onBack, onTicket }: { user: User; client: Client | ClientSummary; onBack: () => void; onTicket: (ticket: Ticket) => void }) { const [data, setData] = useState<{ tickets: Ticket[]; payments: Payment[] } | null>(null); useEffect(() => { void loadClientHistory(user, client.id).then(setData) }, [user, client.id]); const movements = [...(data?.tickets ?? []).map((item) => ({ ...item, kind: 'ticket' as const })), ...(data?.payments ?? []).map((item) => ({ ...item, kind: 'payment' as const }))].sort((a, b) => b.created_at.localeCompare(a.created_at)); return <FormPage title="Historial" onBack={onBack}><div className="history-list">{movements.map((movement) => movement.kind === 'ticket' ? <button className="movement" key={movement.id} onClick={() => onTicket(movement)}><span><b>{formatDate(movement.created_at)}</b><small>Compra · {movement.status === 'voided' ? 'Anulado' : 'Activo'}</small></span><strong className={movement.status === 'voided' ? 'muted' : 'debt'}>{formatCents(movement.amount_cents)}</strong></button> : <div className="movement payment" key={movement.id}><span><b>{formatDate(movement.created_at)}</b><small>Pago · {movement.voided_at ? 'Anulado' : 'Activo'}</small></span><strong className={movement.voided_at ? 'muted' : 'paid'}>- {formatCents(movement.amount_cents)}</strong></div>)}</div></FormPage> }
+
+function FormPage({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) { return <section className="page"><button className="back" onClick={onBack}>← Volver</button><h1>{title}</h1>{children}</section> }
+function formatDate(value: string) { return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value)) }
