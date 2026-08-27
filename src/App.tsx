@@ -34,6 +34,8 @@ import { accountDisplayName, accountInitial, MIN_PASSWORD_LENGTH, passwordProble
 
 type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings'
 type Notice = { tone: 'success' | 'error'; title?: string; message: string }
+/** Los avisos de exito son efimeros: un ✓ viejo puede leerse como la accion recien hecha. */
+export const SUCCESS_NOTICE_MS = 6000
 type DisplayMovement = (Ticket & { kind: 'ticket' }) | (Payment & { kind: 'payment' })
 
 export function App() {
@@ -152,14 +154,27 @@ export function Workspace({ user }: { user: User }) {
 
   useEffect(() => { void refresh() }, [])
 
+  useEffect(() => {
+    if (notice?.tone !== 'success') return
+    const timer = window.setTimeout(() => setNotice(null), SUCCESS_NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
+  // Navegar descarta la confirmacion anterior. Los errores se mantienen:
+  // siguen siendo ciertos y necesitan atencion hasta que una carga correcta los resuelva.
+  function go(next: View) {
+    setNotice((current) => (current?.tone === 'error' ? current : null))
+    setView(next)
+  }
+
   function openClient(client: Client | ClientSummary) {
     setSelectedClient(client)
-    setView('client')
+    go('client')
   }
 
   function openNewClient(origin: 'home' | 'client') {
     setNewClientOrigin(origin)
-    setView('new-client')
+    go('new-client')
   }
 
   async function finishPurchase(ticket: Ticket, client: Client | ClientSummary) {
@@ -205,7 +220,7 @@ export function Workspace({ user }: { user: User }) {
   }
 
   if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
-  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => setView('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onAccount={() => setView('settings')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => setView('choose-client')} />}{view === 'new-client' && <NewClient user={user} allowContinue={newClientOrigin !== 'client'} onBack={() => setView(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); setNotice({ tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => setView('home')} onClient={(client) => { setSelectedClient(client); setView('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => setView('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} onBack={() => setView('home')} onBuy={() => setView('purchase')} onCharge={() => setView('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => setView('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} onHistory={() => setView('history')} onAccount={() => setView('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} onBack={() => setView('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => setView('client')} onChanged={() => { void refresh({ keepNotice: Boolean(notice) }); setView('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => setView('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => setView('home')} />}</div></main>
+  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onAccount={() => go('settings')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); setNotice({ tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => go('home')} />}</div></main>
 }
 
 /**

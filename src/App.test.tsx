@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { User } from '@supabase/supabase-js'
-import { Workspace } from './App'
+import { SUCCESS_NOTICE_MS, Workspace } from './App'
 import type { Client, ClientSummary } from './lib/data'
-import { createClient, createOpeningBalance, loadClientHistory, loadDashboard } from './lib/data'
+import { createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard } from './lib/data'
 import type { Ticket } from './lib/data'
 
 const { auth } = vi.hoisted(() => ({
@@ -571,5 +571,88 @@ describe('crear otro cliente desde la ficha', () => {
     fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
     expect(await screen.findByRole('heading', { name: 'Nuevo cliente' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Clientes' })).toBeNull()
+  })
+})
+
+describe('los avisos de exito son efimeros', () => {
+  async function crearLucia() {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(createClient).mockResolvedValue({ id: 'lucia', store_id: 'store-1', name: 'Lucía', phone: null, nickname: null, note: null, active: true })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
+    vi.mocked(loadClientHistory).mockResolvedValue(history({ id: 'lucia', name: 'Lucía' } as Client, 0))
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+    expect(await screen.findByText('✓ Lucía creado correctamente')).toBeTruthy()
+  }
+
+  it('el aviso de alta no sobrevive a la navegacion ni reaparece despues', async () => {
+    await crearLucia()
+
+    fireEvent.click(screen.getByRole('button', { name: '← Volver' }))
+    await screen.findByRole('heading', { name: 'Clientes' })
+    expect(screen.queryByText('✓ Lucía creado correctamente')).toBeNull()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Ana/ }))
+    await screen.findByRole('heading', { name: 'Ana' })
+    expect(screen.queryByText('✓ Lucía creado correctamente')).toBeNull()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver historial' }))
+    await screen.findByRole('heading', { name: 'Historial' })
+    expect(screen.queryByText('✓ Lucía creado correctamente')).toBeNull()
+  })
+
+  it('el aviso de alta desaparece solo tras unos segundos sin tocar nada', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await crearLucia()
+
+      // Con temporizadores falsos React no vacia los efectos pasivos hasta que se
+      // cede el turno: primero se deja instalar el efecto y despues se avanza el reloj.
+      await act(async () => {})
+      expect(vi.getTimerCount()).toBe(1)
+      await act(async () => { vi.advanceTimersByTime(SUCCESS_NOTICE_MS + 100) })
+
+      await waitFor(() => expect(screen.queryByText('✓ Lucía creado correctamente')).toBeNull())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('la confirmacion de cobro tampoco se arrastra al cambiar de pantalla', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(createPayment).mockResolvedValue({ id: 'p-1', store_id: 'store-1', client_id: 'ana', amount_cents: 1840, created_by: 'user-1', created_at: '2026-08-27T10:00:00Z', voided_at: null, voided_by: null, void_reason: null })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: /^Cobrar/ }))
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 0), 0))
+    fireEvent.click(await screen.findByRole('button', { name: 'Paga todo' }))
+
+    expect(await screen.findByText(/ya no debe nada/)).toBeTruthy()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver historial' }))
+    await screen.findByRole('heading', { name: 'Historial' })
+    expect(screen.queryByText(/ya no debe nada/)).toBeNull()
+  })
+
+  it('un error activo no se borra al navegar ni caduca solo', async () => {
+    vi.mocked(loadDashboard).mockRejectedValueOnce(new Error('sin conexion'))
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      render(<Workspace user={user} />)
+      const error = await screen.findByRole('alert')
+      expect(error.textContent).toContain('No se pudieron cargar los datos')
+
+      await act(async () => { vi.advanceTimersByTime(SUCCESS_NOTICE_MS + 100) })
+      expect(screen.getByRole('alert')).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'marcos' }))
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Cuenta' }))
+      await screen.findByRole('heading', { name: 'Cuenta' })
+      expect(screen.getByRole('alert').textContent).toContain('No se pudieron cargar los datos')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
