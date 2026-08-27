@@ -32,6 +32,11 @@ export function canRegisterPayment(balance: number, amountCents: number): boolea
   return amountCents > 0 && amountCents <= balance
 }
 
+/** `Cobrar` solo tiene sentido cuando queda deuda viva; con saldo cero no se ofrece la accion. */
+export function canChargeClient(balance: number): boolean {
+  return balance > 0
+}
+
 export function searchClients<T extends SearchableClient>(clients: T[], query: string): T[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('es-ES')
   if (!normalizedQuery) return clients

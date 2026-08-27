@@ -1,8 +1,40 @@
 # Changelog
 
-## Pendiente - Fase 3B Subtrabajo 2
+## Pendiente - Cierre Fase 3B Subtrabajo 2
 
-Base: `1ecaf2a61d0728c9201b03467f8e7a2e2963d053`.
+Base: `ab12c75b29c8213f009fb1ea3de5f180df035a91`. Se despliega en produccion automaticamente al hacer push a `master`.
+
+### Cuenta
+
+- La pantalla `Cuenta` ya no muestra el campo de contrasena nueva al entrar: primero aparece la accion secundaria `Cambiar contraseña`.
+- Cambiar la contrasena exige reautenticacion con la contrasena actual, validada contra Supabase Auth.
+- Tras reautenticar se piden `Nueva contraseña` y `Repetir nueva contraseña`, con validacion de coincidencia y minimo de 8 caracteres con letras y numeros.
+- Anadida salida `He olvidado mi contraseña` que reutiliza el flujo de recuperacion de Supabase ya existente.
+- `✓ Contraseña actualizada` solo se muestra tras confirmacion real de Supabase.
+- Corregido el layout de `Email de acceso`: label y correo dejan de aparecer pegados; el email va debajo, con espaciado propio y corte de linea correcto en movil.
+- `Cerrar sesión` se mantiene.
+
+### Identidad e Inicio
+
+- La cabecera sustituye `Hoy, con calma.` por `Covirán · San Miguel de las Dueñas · El Bierzo · León`, con jerarquia secundaria y wrap en movil.
+- `+ Apuntar compra` y `Nuevo cliente` quedan alineados en el eje derecho en movil y escritorio.
+
+### Correcciones de fiabilidad
+
+- Si una compra o un cobro se guardan pero falla la lectura posterior del saldo, la aplicacion avisa en lugar de quedarse en silencio en el formulario.
+- `Purchase` y `Charge` esperan de verdad al cierre de la operacion, cerrando la ventana en la que se podia registrar un segundo pago mientras se refrescaba el saldo.
+- La pantalla de cobro no habilita `Paga todo` ni `Paga una parte` hasta conocer la deuda; si el cliente no debe nada, lo dice en vez de dejar botones que fallan.
+
+### Verificado como ya existente en esta base
+
+- Clientes recientes en `¿A quién se lo apuntamos?`, orden inteligente con deuda primero, tarjetas completas pulsables, confirmaciones de compra y de pago parcial/total, vista `Ver cuenta`, umbral de importe alto, apodo y nota opcionales, busqueda por nombre/apodo, seccion `Cuenta`, estados vacios, errores de conexion/guardado, foto del ticket con camara/selector y proteccion contra doble submit.
+- `+ Nuevo cliente` desde la ficha, `Ver historial` como boton secundario y `Cobrar` oculto con saldo cero ya estaban implementados; en este tramo se consolidan con regla compartida y tests.
+
+### Tests y documentacion
+
+- Anadidos tests de interfaz con jsdom y Testing Library: ficha con saldo cero y con deuda, alta de cliente desde ficha y vuelta al cancelar, y la puerta de reautenticacion de `Cuenta`.
+- Anadidas reglas puras `canChargeClient` y `passwordProblem` con sus tests.
+- Documentacion actualizada: README, decisiones, pendientes y changelog.
 
 - Añadidos clientes recientes en la pantalla `¿A quién se lo apuntamos?`.
 - Añadido orden inteligente: deuda primero, actividad reciente despues y nombre como desempate.

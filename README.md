@@ -2,7 +2,7 @@
 
 PWA mobile-first para llevar compras fiadas de una tienda pequena: clientes, compras, pagos, fotos opcionales de ticket y trazabilidad de anulaciones.
 
-Estado actual: Fase 3B Subtrabajo 2 en preparacion para revision. La base versionada de este tramo es `1ecaf2a61d0728c9201b03467f8e7a2e2963d053`.
+Estado actual: Fase 3B Subtrabajo 2 cerrado y validado. La base versionada de este tramo es `ab12c75b29c8213f009fb1ea3de5f180df035a91`. La aplicacion esta desplegada y en prueba manual real.
 
 ## Requisitos
 
@@ -29,7 +29,9 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 - Cobro parcial o total desde la ficha del cliente.
 - `Ver cuenta` muestra saldo y movimientos pendientes.
 - Historial conserva compras y pagos anulados.
-- Cuenta permite ver email, cambiar contrasena y cerrar sesion.
+- Desde la ficha de un cliente se puede crear otro cliente sin volver a Inicio: al guardar se abre la ficha nueva y al cancelar se vuelve a la ficha anterior.
+- `Cobrar` solo aparece cuando el cliente debe algo.
+- Cuenta permite ver el email, cambiar la contrasena y cerrar sesion. El cambio de contrasena exige reautenticacion con la contrasena actual antes de mostrar los campos de contrasena nueva.
 
 ## Base De Datos
 
@@ -57,7 +59,7 @@ npm run build
 npm run test:security
 ```
 
-Las pruebas unitarias cubren reglas economicas, busqueda, orden de clientes, recientes, umbral de importe alto y subida de fotos. Las pruebas pgTAP comprueban aislamiento entre tiendas, acceso anonimo, integridad de importes y trazabilidad de anulaciones.
+Las pruebas unitarias cubren reglas economicas, busqueda, orden de clientes, recientes, umbral de importe alto, reglas de contrasena y subida de fotos. Las pruebas de interfaz se ejecutan con jsdom y Testing Library y cubren la ficha de cliente con y sin deuda, el alta de cliente desde la ficha y la reautenticacion de `Cuenta`. Las pruebas pgTAP comprueban aislamiento entre tiendas, acceso anonimo, integridad de importes y trazabilidad de anulaciones.
 
 ## Seguridad
 
@@ -67,6 +69,7 @@ Las pruebas unitarias cubren reglas economicas, busqueda, orden de clientes, rec
 - Sin service role en el frontend.
 - Sin escritura economica offline.
 - Auth real de Supabase; la recuperacion de contrasena usa Supabase Auth.
+- Las operaciones sensibles de cuenta exigen reautenticacion; las contrasenas no se guardan en estado persistente, logs ni almacenamiento local.
 
 ## Despliegue
 
@@ -74,7 +77,7 @@ La aplicacion se despliega en Vercel:
 
 `https://marcos-tienda.vercel.app`
 
-Antes de desplegar, ejecutar tests, TypeScript y build. Las URLs de redireccion de Supabase Auth deben permitir el dominio publico de Vercel.
+Vercel esta conectado a este repositorio y despliega automaticamente: cada push a `master` crea un deployment de produccion, sin promocion manual. Por eso `master` solo debe recibir codigo que ya pase tests, TypeScript y build. Las URLs de redireccion de Supabase Auth deben permitir el dominio publico de Vercel.
 
 ## Documentación
 

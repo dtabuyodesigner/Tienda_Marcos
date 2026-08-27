@@ -10,9 +10,21 @@ Sin bloqueos documentados ahora mismo.
 
 ### Mejoras UX detectadas en prueba real
 
-- Estado: resuelto.
+- Estado: resuelto y validado sobre `ab12c75b29c8213f009fb1ea3de5f180df035a91`.
 - Incluye: clientes recientes al apuntar compra, orden inteligente de clientes, fila completa pulsable, confirmaciones con saldo actualizado, boton secundario `Ver historial`, alta de cliente desde ficha con vuelta correcta al cancelar, ocultar `Cobrar` cuando el saldo es cero, vista `Ver cuenta`, estados vacios claros y mejor presentacion de `Foto del ticket`.
 - Motivo: reducir pasos reales de mostrador sin ampliar el producto hacia TPV, catalogo, OCR, WhatsApp o PDF.
+
+### Endurecimiento de la pantalla Cuenta
+
+- Estado: resuelto.
+- Incluye: email de acceso legible en su propia linea, cambio de contrasena oculto tras una accion secundaria, reautenticacion obligatoria con la contrasena actual, doble campo de contrasena nueva, salida al flujo de recuperacion de Supabase y confirmacion solo tras respuesta real de Supabase.
+- Motivo: una sesion abierta olvidada en el movil no debe bastar para apropiarse de la cuenta.
+
+### Identificacion de la tienda en cabecera
+
+- Estado: resuelto.
+- Incluye: `Covirán · San Miguel de las Dueñas · El Bierzo · León` como subtitulo de la cabecera y alineacion coherente de las acciones de Inicio.
+- Motivo: la aplicacion debe identificar la tienda concreta, no solo el producto.
 
 ## P1 - Proxima iteracion
 
@@ -23,9 +35,19 @@ Sin bloqueos documentados ahora mismo.
 - Prioridad: P1 alta antes de implantacion definitiva con Marcos.
 - Estado: pendiente.
 - Dependencias: probar primero el MVP actual y conocer aproximadamente cuantos clientes/deudas pendientes tiene Marcos cuando vaya a empezar a utilizar la aplicacion.
-- Requisitos futuros: el movimiento debe quedar identificado como `Saldo inicial / deuda anterior a La Libreta`, registrar cliente, importe, fecha de migracion, usuario, nota opcional y origen `saldo inicial`.
+- Requisitos futuros: el movimiento debe quedar identificado como `Saldo inicial / deuda anterior a La Libreta`, registrar cliente, importe, fecha de migracion, usuario, nota opcional y origen `saldo inicial`. No se inventan tickets individuales por cada compra antigua de papel: se registra un unico movimiento de saldo inicial por cliente.
 - Integridad: importe en centimos enteros, `amount > 0`, RLS por tienda, sin borrado fisico normal y anulacion con trazabilidad.
 - Alcance tecnico: debe formar parte del calculo de saldo y del historial del cliente. Si requiere cambios de esquema, hacer migracion SQL versionada, aplicarla a `Marcos_Tienda` y verificar RLS/integridad.
+
+### Identidad visual / logo de la tienda
+
+- Descripcion: cuando Marcos facilite una o varias fotografias o referencias visuales reales de la tienda, crear una identidad grafica sencilla para `La Libreta de Marcos`.
+- Utilidad: dar a la aplicacion una imagen reconocible y propia de la tienda en el movil.
+- Debe servir como: icono PWA 192x192, icono PWA 512x512, favicon, apple-touch-icon y posible marca pequena en la cabecera.
+- Prioridad: P1.
+- Estado: pendiente.
+- Restriccion: no utilizar imagenes inventadas ni asumir que se puede usar el logotipo oficial de Coviran sin revisar primero que material aporta Marcos y con que permisos.
+- Dependencias: material grafico real de la tienda.
 
 ### PIN local de acceso rapido
 
@@ -34,6 +56,14 @@ Sin bloqueos documentados ahora mismo.
 - Prioridad: P1.
 - Estado: pendiente.
 - Dependencias: prueba real en movil y diseno de almacenamiento seguro.
+
+### Bloqueo automatico por inactividad
+
+- Descripcion: bloquear la aplicacion tras un periodo configurable de inactividad, desbloqueable mediante PIN mientras la sesion Supabase siga siendo valida.
+- Utilidad: reduce el riesgo de que un movil desatendido en el mostrador quede abierto sobre datos economicos de clientes.
+- Prioridad: P1.
+- Estado: pendiente, no implementado.
+- Dependencias: implementar antes el PIN local; el bloqueo no sustituye a Supabase Auth ni relaja RLS.
 
 ### Revisar comportamiento con cientos de clientes
 
@@ -54,7 +84,7 @@ Sin bloqueos documentados ahora mismo.
 ### Compartir cuenta por WhatsApp
 
 - Descripcion: permitir compartir un resumen legible de la cuenta del cliente.
-- Utilidad: resolver consultas sin enseñar siempre el movil fisicamente.
+- Utilidad: resolver consultas sin ensenar siempre el movil fisicamente.
 - Prioridad: P1.
 - Estado: pendiente.
 - Dependencias: definir formato y privacidad.

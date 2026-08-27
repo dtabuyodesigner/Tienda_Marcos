@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   calculateActiveBalance,
   calculateBalance,
+  canChargeClient,
   canRegisterPayment,
   formatCents,
   needsHighTicketConfirmation,
@@ -101,6 +102,25 @@ describe('money helpers', () => {
     ]
 
     expect(recentClients(clients, 2).map((client) => client.name)).toEqual(['Hoy con deuda', 'Hoy sin deuda'])
+  })
+
+  it('solo permite cobrar cuando queda deuda viva', () => {
+    expect(canChargeClient(0)).toBe(false)
+    expect(canChargeClient(1)).toBe(true)
+    expect(canChargeClient(1840)).toBe(true)
+  })
+
+  it('no ofrece cobrar despues de un pago total', () => {
+    const balance = calculateActiveBalance([{ amount_cents: 1840, status: 'active' }], [{ amount_cents: 1840, voided_at: null }])
+    expect(balance).toBe(0)
+    expect(canChargeClient(balance)).toBe(false)
+    expect(canRegisterPayment(balance, 100)).toBe(false)
+  })
+
+  it('vuelve a permitir cobrar si se anula el pago que dejaba el saldo a cero', () => {
+    const balance = calculateActiveBalance([{ amount_cents: 1840, status: 'active' }], [{ amount_cents: 1840, voided_at: '2026-08-27T12:00:00Z' }])
+    expect(balance).toBe(1840)
+    expect(canChargeClient(balance)).toBe(true)
   })
 
   it('requires confirmation only above the high ticket threshold', () => {

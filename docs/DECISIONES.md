@@ -5,7 +5,8 @@
 - Producto: `La Libreta de Marcos`, PWA para fiados de tienda.
 - Proyecto Supabase: `Marcos_Tienda`.
 - Deploy publico: `https://marcos-tienda.vercel.app`.
-- SHA base de Fase 3B Subtrabajo 2: `1ecaf2a61d0728c9201b03467f8e7a2e2963d053`.
+- SHA base de Fase 3B Subtrabajo 2: `ab12c75b29c8213f009fb1ea3de5f180df035a91`.
+- `master` es la rama desplegada automaticamente por Vercel: cada push a `master` genera un deployment de produccion. No hay promocion manual, asi que `master` solo debe recibir codigo que pase tests, TypeScript y build.
 
 ## Arquitectura
 
@@ -43,9 +44,14 @@
 
 ## UX
 
+- La ficha de cliente debe permitir encadenar tareas. Desde una ficha se puede crear otro cliente sin volver a Inicio: al guardar se abre la ficha del cliente nuevo y al cancelar se vuelve a la ficha anterior.
+- Las acciones secundarias deben verse como botones tactiles, no como enlaces de texto. `Ver historial`, `Ver cuenta` y `+ Nuevo cliente` usan boton con fondo y borde propios, con jerarquia visual por debajo de `+ Nueva compra` y `Cobrar`.
 - `+ Apuntar compra` y `+ Nueva compra` son acciones principales.
 - `Nuevo cliente`, `Ver historial` y `Ver cuenta` mantienen jerarquia secundaria.
-- `Cobrar` se oculta cuando el saldo es cero para evitar una accion imposible.
+- `Cobrar` no aparece cuando el saldo es cero: no se ofrece una accion imposible. La regla vive en `canChargeClient` y se aplica tanto en la ficha como en la pantalla de cobro.
+- La pantalla de cobro no habilita botones hasta conocer la deuda real, para no mostrar errores enganosos mientras carga.
+- En Inicio, `+ Apuntar compra` y `Nuevo cliente` comparten eje derecho: la fila de la seccion usa el mismo canal interior que la tarjeta de total pendiente.
+- La cabecera identifica la tienda concreta y su ubicacion (`Covirán · San Miguel de las Dueñas · El Bierzo · León`) por debajo del nombre de la aplicacion, con jerarquia secundaria y wrap permitido en movil.
 - Las confirmaciones de compra, pago parcial y pago total muestran el saldo actualizado.
 - Los estados vacios usan lenguaje natural.
 - Los errores de carga/guardado evitan mostrar falso exito.
@@ -62,6 +68,12 @@
 - Login, sesion y recuperacion de contrasena se hacen con Supabase Auth.
 - La vista `Cuenta` muestra email, permite cambiar contrasena y cerrar sesion.
 - Las redirect URLs de Supabase deben permitir `https://marcos-tienda.vercel.app`.
+- Las operaciones sensibles de cuenta requieren reautenticacion. Cambiar la contrasena exige volver a introducir la contrasena actual y validarla contra Supabase antes de mostrar siquiera los campos de contrasena nueva. Motivo: reducir el riesgo de apropiacion de cuenta desde un dispositivo con la sesion ya abierta, que es el escenario realista en un movil de mostrador.
+- El formulario de contrasena nueva no se muestra al entrar en `Cuenta`; aparece solo despues de una reautenticacion correcta.
+- La contrasena nueva se pide dos veces y debe cumplir un minimo razonable: al menos 8 caracteres, con letras y numeros.
+- Si el usuario no recuerda su contrasena actual, `Cuenta` ofrece salida al flujo de recuperacion de Supabase ya existente en lugar de relajar la reautenticacion.
+- El exito solo se anuncia tras confirmacion real de Supabase; un error de Supabase nunca se presenta como cambio realizado.
+- Ni la contrasena actual ni la nueva se guardan en estado persistente, logs, localStorage ni base de datos: viven solo en el estado del formulario y se limpian al cambiar de paso.
 
 ## Funciones Aplazadas
 
