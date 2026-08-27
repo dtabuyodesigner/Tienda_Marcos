@@ -57,7 +57,7 @@
 - En `¿A quién se lo apuntamos?`, `+ Nuevo cliente` aparece antes del listado y se muestran clientes recientes.
 - La fila completa del cliente es pulsable para uso tactil.
 - La ficha del cliente concentra sus acciones: `+ Nueva compra`, `Cobrar` cuando hay deuda, `Ver cuenta`, `Ver historial` y `Añadir saldo anterior` cuando procede.
-- Crear un cliente distinto no es una accion del cliente abierto. En la ficha se llama `+ Crear otro cliente` y vive en su propia zona separada por una linea, secundaria respecto a `+ Nueva compra`. Tras el alta se confirma con `✓ <Nombre> creado correctamente` y se puede encadenar otra alta sin volver a Inicio.
+- Crear un cliente distinto no es una accion del cliente abierto. En la ficha se llama `+ Crear otro cliente` y va en la cabecera, a la derecha del nombre del cliente, porque ahi se lee como `paso a otro cliente` y no como algo que se le hace al cliente abierto. En movil estrecho cae debajo del nombre. Mantiene jerarquia secundaria: no compite con `+ Nueva compra`. Tras el alta se confirma con `✓ <Nombre> creado correctamente` y se puede encadenar otra alta sin volver a Inicio.
 - Si se crea un cliente desde una ficha, cancelar vuelve a la ficha anterior y guardar abre la ficha nueva.
 
 ## UX

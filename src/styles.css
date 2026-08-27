@@ -69,9 +69,10 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .client-identity-name { display: block; color: #002446; font: 700 22px/1.25 system-ui, sans-serif; overflow-wrap: anywhere; }
 .client-identity span { color: #43474e; font: 15px/22px system-ui, sans-serif; }
 .account-summary .client-identity-name { margin: 0; font-size: 22px; line-height: 1.25; }
-/* Crear otro cliente no es una accion del cliente abierto: va en su propia zona. */
-.other-client { padding-top: 16px; margin: 4px 0 6px; border-top: 1px solid #e3e2df; }
-.other-client-action { width: 100%; min-height: 48px; color: #002446; background: #f4f1e8; border: 1px dashed #c7c3b6; font-size: 15px; }
+/* Crear otro cliente vive junto al nombre: se lee como pasar a otro cliente. */
+.page-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0 24px; }
+.page-heading h1 { flex: 1 1 auto; min-width: 8ch; margin: 0; overflow-wrap: anywhere; }
+.heading-action { flex: 0 0 auto; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }
 .account-action { width: 100%; }
@@ -90,6 +91,6 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .photo-button { min-height: 52px; display: grid; place-items: center; padding: 12px 16px; border-radius: 8px; background: #2c694e; color: #fff; font: 600 16px/24px system-ui, sans-serif; }
 .photo-preview { display: grid; gap: 8px; color: #43474e; font: 14px/20px system-ui, sans-serif; }
 .photo-preview img { width: 100%; max-height: 220px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid #e3e2df; }
-@media (max-width: 480px) { .section-heading, .actions { align-items: stretch; flex-direction: column; } .brand-place { font-size: 12px; line-height: 17px; } .secondary-actions { display: grid; grid-template-columns: 1fr 1fr; } .subtle-action { width: 100%; } .small-action { width: 100%; } }
+@media (max-width: 480px) { .section-heading, .actions { align-items: stretch; flex-direction: column; } .page-heading { flex-direction: column; align-items: stretch; } .brand-place { font-size: 12px; line-height: 17px; } .secondary-actions { display: grid; grid-template-columns: 1fr 1fr; } .subtle-action { width: 100%; } .small-action { width: 100%; } }
 @media (max-width: 380px) { .user-name { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } .user-trigger { padding: 6px 8px; } }
 @media (min-width: 600px) { .topbar, .content { padding-left: 28px; padding-right: 28px; } .hero { grid-template-columns: 1fr auto; align-items: center; } }

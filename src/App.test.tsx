@@ -540,7 +540,7 @@ describe('identidad del cliente en sus pantallas', () => {
 })
 
 describe('crear otro cliente desde la ficha', () => {
-  it('separa la accion de las acciones del cliente abierto', async () => {
+  it('vive en la cabecera de la ficha, junto al nombre, y no entre las acciones del cliente', async () => {
     vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
     render(<Workspace user={user} />)
     await openFicha('Ana')
@@ -548,7 +548,9 @@ describe('crear otro cliente desde la ficha', () => {
     const crear = await screen.findByRole('button', { name: '+ Crear otro cliente' })
     expect(screen.queryByRole('button', { name: '+ Nuevo cliente' })).toBeNull()
     expect(crear.closest('.secondary-actions')).toBeNull()
-    expect(crear.closest('.other-client')).not.toBeNull()
+    expect(crear.closest('.page-heading')).not.toBeNull()
+    expect(crear.closest('.page-heading')?.querySelector('h1')?.textContent).toBe('Ana')
+    expect(crear.className).toContain('subtle-action')
     expect(crear.className).not.toContain('primary-action')
   })
 
