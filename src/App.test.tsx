@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import type { User } from '@supabase/supabase-js'
 import { SUCCESS_NOTICE_MS, Workspace } from './App'
 import type { Client, ClientSummary } from './lib/data'
-import { createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard } from './lib/data'
+import { attachClientPhoto, createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard, removeClientPhoto } from './lib/data'
 import type { Ticket } from './lib/data'
 
 const { auth } = vi.hoisted(() => ({
@@ -25,6 +25,9 @@ vi.mock('./lib/data', async (importOriginal) => ({
   createTicket: vi.fn(),
   createPayment: vi.fn(),
   createOpeningBalance: vi.fn(),
+  attachClientPhoto: vi.fn(),
+  removeClientPhoto: vi.fn(),
+  signedPhotoUrls: vi.fn(async () => ({})),
   attachTicketPhoto: vi.fn(),
   signedPhotoUrl: vi.fn(),
   voidMovement: vi.fn(),
@@ -32,8 +35,12 @@ vi.mock('./lib/data', async (importOriginal) => ({
 
 const user = { id: 'user-1', email: 'marcos@covirantienda.es' } as User
 
-function summary(name: string, balance: number, id = name.toLowerCase()): ClientSummary {
-  return { id, store_id: 'store-1', name, phone: null, nickname: null, note: null, active: true, balance, lastActivityAt: '2026-08-27T10:00:00Z' }
+function summary(name: string, balance: number, id = name.toLowerCase(), photoPath: string | null = null): ClientSummary {
+  return { id, store_id: 'store-1', name, phone: null, nickname: null, note: null, photo_path: photoPath, active: true, balance, lastActivityAt: '2026-08-27T10:00:00Z' }
+}
+
+function dashboard(overrides: Partial<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean; supportsClientPhoto: boolean; photoUrls: Record<string, string>; displayName: string | null }> = {}) {
+  return { clients: [], total: 0, supportsOpeningBalance: true, supportsClientPhoto: true, photoUrls: {}, displayName: 'Marcos', ...overrides }
 }
 
 function history(client: ClientSummary | Client, balance: number, tickets: Ticket[] = []) {
@@ -63,7 +70,7 @@ async function openFicha(name: string) {
 }
 
 beforeEach(() => {
-  vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 0)], total: 1840, supportsOpeningBalance: true, displayName: 'Marcos' })
+  vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 1840), summary('Bruno', 0)], total: 1840 }))
 })
 
 afterEach(() => {
@@ -251,7 +258,7 @@ describe('saldo anterior desde la ficha', () => {
   })
 
   it('no ofrece la accion si el esquema todavia no soporta el origen', async () => {
-    vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 0)], total: 0, supportsOpeningBalance: false, displayName: 'Marcos' })
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 0)], supportsOpeningBalance: false }))
     pedrito(0)
     render(<Workspace user={user} />)
     await openFicha('Ana')
@@ -415,7 +422,7 @@ describe('control de usuario de la cabecera', () => {
   })
 
   it('cae al usuario del email si el perfil no tiene display_name', async () => {
-    vi.mocked(loadDashboard).mockResolvedValue({ clients: [], total: 0, supportsOpeningBalance: true, displayName: null })
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ displayName: null }))
     render(<Workspace user={user} />)
 
     expect(await screen.findByRole('button', { name: 'marcos' })).toBeTruthy()
@@ -527,7 +534,7 @@ describe('identidad del cliente en sus pantallas', () => {
   })
 
   it('el nombre viene del cliente seleccionado, no de estado propio', async () => {
-    vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 500)], total: 2340, supportsOpeningBalance: true, displayName: 'Marcos' })
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 1840), summary('Bruno', 500)], total: 2340 }))
     vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Bruno', 500), 500))
     render(<Workspace user={user} />)
     await openFicha('Bruno')
@@ -654,5 +661,142 @@ describe('los avisos de exito son efimeros', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('foto del cliente', () => {
+  const FOTO = 'https://signed.example/ana.jpg?token=abc'
+  const archivo = () => new File(['x'], 'ana.jpg', { type: 'image/jpeg' })
+
+  it('sin foto se usa la inicial y no hay imagen rota', async () => {
+    render(<Workspace user={user} />)
+
+    const fila = await screen.findByRole('button', { name: /Ana/ })
+    expect(fila.querySelector('img')).toBeNull()
+    expect(fila.querySelector('.avatar')?.textContent).toBe('A')
+  })
+
+  it('con foto se muestra la imagen del cliente', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 1840, 'ana', 'store-1/client-photos/ana/1.jpg')], total: 1840, photoUrls: { ana: FOTO } }))
+    render(<Workspace user={user} />)
+
+    const fila = await screen.findByRole('button', { name: /Ana/ })
+    const img = fila.querySelector('img')
+    expect(img?.getAttribute('src')).toBe(FOTO)
+    expect(img?.className).toContain('avatar-photo')
+    expect(img?.getAttribute('alt')).toBe('')
+  })
+
+  it('si la imagen no carga vuelve a la inicial en vez de dejar un hueco', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 1840, 'ana', 'p.jpg')], total: 1840, photoUrls: { ana: FOTO } }))
+    render(<Workspace user={user} />)
+    const fila = await screen.findByRole('button', { name: /Ana/ })
+
+    fireEvent.error(fila.querySelector('img')!)
+
+    await waitFor(() => expect(fila.querySelector('img')).toBeNull())
+    expect(fila.querySelector('.avatar')?.textContent).toBe('A')
+  })
+
+  it('crear cliente sin foto no toca Storage', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(createClient).mockResolvedValue({ id: 'lucia', store_id: 'store-1', name: 'Lucía', phone: null, nickname: null, note: null, active: true })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
+    vi.mocked(loadClientHistory).mockResolvedValue(history({ id: 'lucia', name: 'Lucía' } as Client, 0))
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+
+    expect(await screen.findByText('✓ Lucía creado correctamente')).toBeTruthy()
+    expect(attachClientPhoto).not.toHaveBeenCalled()
+  })
+
+  it('si falla la foto el cliente no se duplica y se avisa para reintentar', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    const lucia = { id: 'lucia', store_id: 'store-1', name: 'Lucía', phone: null, nickname: null, note: null, active: true }
+    vi.mocked(createClient).mockResolvedValue(lucia)
+    vi.mocked(attachClientPhoto).mockRejectedValue(new Error('storage caido'))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
+    fireEvent.change(screen.getByLabelText('Hacer o elegir foto'), { target: { files: [archivo()] } })
+    vi.mocked(loadClientHistory).mockResolvedValue(history(lucia as Client, 0))
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+
+    expect(await screen.findByText('Lucía creado, pero la foto no se guardó')).toBeTruthy()
+    expect(createClient).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('heading', { name: 'Lucía' })).toBeTruthy()
+    expect(await screen.findByLabelText('Añadir foto')).toBeTruthy()
+  })
+
+  it('permite añadir la foto desde la ficha', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(attachClientPhoto).mockResolvedValue({ ...summary('Ana', 1840), photo_path: 'store-1/client-photos/ana/1.jpg' })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    fireEvent.change(await screen.findByLabelText('Añadir foto'), { target: { files: [archivo()] } })
+
+    await waitFor(() => expect(attachClientPhoto).toHaveBeenCalledWith(user, expect.objectContaining({ id: 'ana' }), expect.any(File)))
+  })
+
+  it('permite cambiar y quitar la foto sin borrar al cliente', async () => {
+    const conFoto = summary('Ana', 1840, 'ana', 'store-1/client-photos/ana/1.jpg')
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [conFoto], total: 1840, photoUrls: { ana: FOTO } }))
+    vi.mocked(loadClientHistory).mockResolvedValue(history(conFoto, 1840))
+    vi.mocked(removeClientPhoto).mockResolvedValue({ ...conFoto, photo_path: null })
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    expect(await screen.findByLabelText('Cambiar foto')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar foto' }))
+
+    await waitFor(() => expect(removeClientPhoto).toHaveBeenCalledWith(user, expect.objectContaining({ id: 'ana' })))
+    expect(screen.getByRole('heading', { name: 'Ana' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /^Cobrar/ })).toBeTruthy()
+  })
+
+  it('no ofrece foto si el esquema todavia no la soporta', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 1840)], total: 1840, supportsClientPhoto: false }))
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    await screen.findByRole('button', { name: 'Ver historial' })
+    expect(screen.queryByLabelText('Añadir foto')).toBeNull()
+  })
+})
+
+describe('resumen de la ficha', () => {
+  it('muestra cifras derivadas de los movimientos reales', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1200), 1200, [
+      ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance', created_at: '2026-08-01T10:00:00Z' }),
+      ticket({ id: 't-1', amount_cents: 1200, created_at: '2026-08-20T10:00:00Z' }),
+      ticket({ id: 't-2', amount_cents: 500, status: 'voided', voided_at: '2026-08-21T10:00:00Z', created_at: '2026-08-21T09:00:00Z' }),
+    ]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    const resumen = (await screen.findByRole('heading', { name: 'Resumen' })).closest('section')!
+    expect(resumen.textContent).toContain('Movimientos de deuda activos')
+    // 2 activos: saldo anterior + compra. El anulado no cuenta.
+    expect(resumen.querySelector('dl')?.textContent).toContain('2')
+    // Total apuntado activo = 8640 + 1200, sin el ticket anulado.
+    expect(resumen.textContent).toContain('98,40')
+    expect(resumen.textContent).toContain('Todavía no hay pagos')
+    expect(resumen.textContent).toContain('Movimientos registrados')
+    expect(resumen.textContent).toContain('no cuentan movimientos anulados')
+  })
+
+  it('no repite la deuda actual que ya se muestra en grande', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1200), 1200, [ticket({ id: 't-1', amount_cents: 1200 })]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    const resumen = (await screen.findByRole('heading', { name: 'Resumen' })).closest('section')!
+    expect(resumen.textContent).not.toContain('Deuda actual')
   })
 })

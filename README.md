@@ -31,6 +31,8 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 - Historial conserva compras y pagos anulados.
 - Desde la ficha de un cliente se puede crear otro cliente sin volver a Inicio: al guardar se abre la ficha nueva y al cancelar se vuelve a la ficha anterior.
 - `Cobrar` solo aparece cuando el cliente debe algo.
+- Foto opcional del cliente: se puede anadir al crearlo o despues desde su ficha, y cambiarla o quitarla. Es solo una ayuda visual; se guarda en Storage privado y se lee con signed URL temporal.
+- La ficha incluye un `Resumen` con movimientos de deuda activos, ultima compra, ultimo pago, total apuntado y total pagado.
 - `Añadir saldo anterior` registra la deuda que el cliente ya tenia en tickets de papel antes de empezar a usar la aplicacion. Es un unico movimiento con origen propio, no una compra inventada, y aparece en el historial como `Saldo anterior`.
 - Cuenta permite ver el email, cambiar la contrasena y cerrar sesion. El cambio de contrasena exige reautenticacion con la contrasena actual antes de mostrar los campos de contrasena nueva.
 
@@ -47,6 +49,7 @@ Las migraciones versionadas estan en `supabase/migrations/`.
 - `202608270001_initial_schema.sql`: tiendas, perfiles, clientes, tickets, pagos, RLS y Storage privado.
 - `202608270002_add_client_reference_fields.sql`: apodo/referencia y nota corta de cliente.
 - `202608270003_add_movement_origin.sql`: origen del movimiento (`purchase` / `opening_balance`) para el saldo anterior a La Libreta.
+- `202608270004_add_client_photo.sql`: referencia opcional a la foto del cliente en Storage privado.
 
 El dinero se guarda siempre como centimos enteros (`amount_cents`). El saldo no se duplica: se calcula como tickets activos menos pagos no anulados.
 

@@ -65,13 +65,26 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .compact-section { display: grid; gap: 10px; margin: 18px 0; }
 .compact-section h2 { font-size: 18px; }
 .account-summary strong { display: block; margin-top: 6px; color: #002446; font-size: 42px; line-height: 1.05; }
-.client-identity { display: grid; gap: 4px; margin: -6px 0 18px; }
+.client-identity { margin: -6px 0 18px; }
 .client-identity-name { display: block; color: #002446; font: 700 22px/1.25 system-ui, sans-serif; overflow-wrap: anywhere; }
 .client-identity span { color: #43474e; font: 15px/22px system-ui, sans-serif; }
 .account-summary .client-identity-name { margin: 0; font-size: 22px; line-height: 1.25; }
 /* Crear otro cliente vive junto al nombre: se lee como pasar a otro cliente. */
 .page-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0 24px; }
 .page-heading h1 { flex: 1 1 auto; min-width: 8ch; margin: 0; overflow-wrap: anywhere; }
+.avatar-photo { object-fit: cover; }
+.avatar-large { flex: 0 0 56px; width: 56px; height: 56px; font-size: 24px; }
+.photo-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: -14px 0 14px; }
+.photo-control { min-height: 44px; font: 600 15px/20px system-ui, sans-serif; text-decoration: underline; cursor: pointer; }
+.client-identity { display: flex; align-items: center; gap: 12px; }
+.client-identity > div { display: grid; gap: 4px; min-width: 0; }
+.account-who { display: flex; align-items: center; gap: 12px; }
+.summary { margin: 22px 0 4px; padding: 16px; border: 1px solid #e3e2df; border-radius: 12px; background: rgba(255,255,255,.6); }
+.summary h2 { font-size: 18px; margin-bottom: 12px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 18px; margin: 0; }
+.summary-grid dt { color: #43474e; font: 600 13px/18px system-ui, sans-serif; }
+.summary-grid dd { margin: 2px 0 0; color: #002446; font: 600 17px/22px system-ui, sans-serif; }
+.summary-note { margin: 14px 0 0; font: 13px/19px system-ui, sans-serif; }
 .heading-action { flex: 0 0 auto; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }

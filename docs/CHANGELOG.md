@@ -1,5 +1,30 @@
 # Changelog
 
+## Pendiente - P1 Foto y resumen del cliente
+
+Base: `b521e4f7bd783187d60cf40ae3f923613a77ba63`.
+
+### Foto del cliente
+
+- Migracion `202608270004_add_client_photo.sql`: columna `clients.photo_path` y `check` que obliga a que la ruta viva bajo la tienda del cliente. Aplicada en `Marcos_Tienda`.
+- Storage: se reutiliza el bucket privado `ticket-photos` con prefijo `<store_id>/client-photos/<client_id>/`. Cero politicas nuevas.
+- Foto opcional en el alta, que nunca bloquea la creacion del cliente; si falla la subida se avisa y se reintenta desde la ficha.
+- Anadir, cambiar y quitar foto desde la ficha. Quitar la foto no toca al cliente ni su historial.
+- Avatar con foto en Inicio, seleccion de cliente, compra, saldo anterior, ficha, Historial y Ver cuenta; inicial como fallback y tambien si la imagen no carga.
+- Reduccion en el navegador a 320 px de lado mayor, JPEG calidad 0,8, antes de subir.
+- Signed URLs de una hora renovadas en cada carga del panel.
+
+### Resumen de la ficha
+
+- Seccion `Resumen` con movimientos de deuda activos, ultima compra, ultimo pago, total apuntado, total pagado y movimientos registrados.
+- Definiciones explicitas en la propia pantalla y en `docs/DECISIONES.md`.
+- `Antiguedad de la deuda` queda fuera a proposito: sigue como P1 con imputacion FIFO pendiente.
+
+### Validacion
+
+- 106 pruebas en verde, incluidas las de foto y las del modulo de resumen.
+- Validacion remota contra `Marcos_Tienda`: datos previos intactos y 8 comprobaciones de seguridad de Storage en verde, en transaccion revertida.
+
 ## `2b15faa475ee81a3cc30fd8d196faef52a5b7a2a` - P1 Migracion inicial de saldos desde papel
 
 Base: `05fc2ac211402a1549b25b37bdbca0ac5f38d089`. Estado: resuelto y validado contra `Marcos_Tienda`.

@@ -30,6 +30,20 @@ Sin bloqueos documentados ahora mismo.
 - Datos previos intactos: 9 tiendas, 13 clientes, 4 tickets y 1 pago antes y despues; los 4 tickets existentes quedaron con `origin = 'purchase'`; deuda total sin cambios en 9.700 centimos; `max(updated_at)` de tickets sin moverse.
 - Pendiente asociado: `npm run test:security` (pgTAP) no se ha podido ejecutar por falta de Docker en la maquina de trabajo. Las pruebas estan escritas y ampliadas a 13 asserts, pero no se dan por pasadas.
 
+### Foto opcional del cliente
+
+- Estado: **RESUELTO / VALIDADO** el 27 de agosto de 2026 contra `Marcos_Tienda`.
+- Incluye: foto opcional en el alta, anadir/cambiar/quitar desde la ficha, avatar en Inicio, en seleccion de cliente, en compra, en saldo anterior, en la ficha, en Historial y en Ver cuenta, y fallback a la inicial cuando no hay foto o la imagen no carga.
+- Storage: bucket privado existente con prefijo `<store_id>/client-photos/<client_id>/`, signed URLs de una hora, sin URL publica permanente. Migracion `202608270004_add_client_photo.sql` aplicada.
+- Validacion remota: 8 comprobaciones de Storage en verde (la tienda sube y ve su foto, otra tienda no la ve, anonimo no la ve, no puede escribir bajo otra tienda, rutas de otra tienda y rutas relativas rechazadas por constraint).
+- Tamano: 320 px de lado mayor, JPEG calidad 0,8.
+
+### Resumen de la ficha de cliente
+
+- Estado: **RESUELTO / VALIDADO**.
+- Incluye: movimientos de deuda activos, ultima compra, ultimo pago, total apuntado, total pagado y movimientos registrados, con las definiciones exactas en `docs/DECISIONES.md`.
+- Deliberadamente fuera: antiguedad de la deuda, que sigue como P1 aparte porque necesita imputacion FIFO y tratamiento del saldo anterior.
+
 ### Identificacion de la tienda en cabecera (Fase 3B Subtrabajo 2)
 
 - Estado: resuelto.
@@ -87,6 +101,7 @@ Sin bloqueos documentados ahora mismo.
 - Prioridad: P1.
 - Estado: pendiente, no implementado.
 - Dependencias: diseno del calculo de antiguedad y prueba real con Marcos.
+- Nota: el `Resumen` de la ficha se implemento sin esta cifra a proposito. Calcularla con `created_at` seria falso en cuanto hay pagos parciales o saldo anterior.
 
 #### Presentacion objetivo
 

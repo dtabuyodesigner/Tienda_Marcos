@@ -86,6 +86,32 @@
 - En pantallas de menos de 380px el nombre se oculta visualmente y queda avatar mas flecha, pero el texto sigue en el arbol de accesibilidad para no dejar un boton sin nombre.
 - `Ayuda` ira en este menu, entre `Cuenta` y `Cerrar sesión`, cuando la seccion exista. No se ha anadido ahora para no dejar un enlace muerto.
 
+## Foto Del Cliente
+
+- La foto es opcional y solo sirve para que Marcos reconozca a la persona de un vistazo. No se usa para nada mas: sin reconocimiento facial, sin clasificacion, sin biometria, sin analisis de imagen.
+- Nunca bloquea el alta. El cliente se crea primero y la foto se sube despues: si Storage falla, el cliente ya existe, no se duplica, se avisa y la foto se puede reintentar desde la ficha.
+- La imagen no entra en la base de datos. `clients.photo_path` guarda solo la ruta del objeto en Storage.
+- Storage: se reutiliza el bucket privado `ticket-photos` con prefijo `<store_id>/client-photos/<client_id>/<uuid>.<ext>`, en vez de crear un bucket nuevo. Motivo: las politicas existentes autorizan por el primer segmento de la ruta, que es exactamente la regla que necesita un avatar. Un bucket nuevo obligaria a duplicar cuatro politicas identicas sin ganar ninguna garantia, y duplicar politicas es duplicar sitios donde equivocarse. Contrapartida asumida: el nombre del bucket ya no describe todo su contenido, y queda anotado aqui.
+- No hay colision de rutas con las fotos de ticket (`<store_id>/<client_id>/<ticket_id>/...`) porque el segundo segmento de un ticket es siempre un UUID y aqui es el literal `client-photos`.
+- Un `check` en `clients` obliga a que `photo_path` empiece por la tienda del propio cliente. La ruta no se autoriza por lo que mande el frontend: la tienda sale de `current_store_id()` y la RLS de Storage vuelve a comprobarla.
+- Lectura siempre con signed URL temporal de una hora, renovada en cada carga del panel. Nunca hay URL publica permanente. Si una URL caduca, el avatar cae a la inicial en vez de dejar una imagen rota.
+- Tamano: la imagen se reduce en el navegador antes de subirla a un maximo de 320 px de lado mayor, JPEG con calidad 0,8. Un avatar asi ocupa decenas de KB, de modo que un listado con cientos de clientes no descarga decenas de MB. Nunca se amplia una imagen ya pequena. Si el navegador no puede procesarla, se sube el original en vez de bloquear al usuario.
+- Sin foto se mantiene la inicial sobre circulo de color. No se muestran huecos ni iconos vacios.
+
+## Resumen De La Ficha
+
+- Seccion discreta bajo las acciones. No sustituye a la deuda actual grande ni la repite.
+- Definiciones exactas de cada cifra:
+  - `Movimientos de deuda activos`: numero de tickets con estado activo, contando compras y saldo anterior. Deliberadamente NO se llama `tickets pendientes`: el modelo no imputa pagos a tickets concretos, asi que decir que esos tickets estan impagados seria falso.
+  - `Total apuntado`: suma de los tickets activos. Incluye el saldo anterior. Excluye los anulados.
+  - `Total pagado`: suma de los pagos no anulados. Un pago anulado no cuenta como pagado.
+  - `Movimientos registrados`: total de tickets mas pagos, incluidos los anulados. Es el historico registrado, no el economico.
+  - `Ultima compra`: fecha del ticket activo mas reciente con origen `purchase`. Un saldo anterior nunca cuenta como compra. Si no hay ninguna, se muestra `—`.
+  - `Ultimo pago`: fecha del pago no anulado mas reciente. Si no hay, `Todavía no hay pagos`.
+- La ficha lo dice en texto bajo las cifras para que no haya ambiguedad: los totales no cuentan anulados, el saldo anterior cuenta como apuntado y la ultima compra no lo incluye.
+- Metrica descartada a proposito: `Antiguedad de la deuda`. Calcularla con `created_at` seria mentir en cuanto hay pagos parciales o un saldo anterior, cuya fecha de registro no es la fecha en que nacio la deuda. Queda como P1 aparte con su imputacion FIFO documentada.
+- Sin graficas: para esta tienda una cifra clara vale mas que un panel.
+
 ## Fotos
 
 - La foto del ticket es opcional.

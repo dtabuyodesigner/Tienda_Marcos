@@ -1,8 +1,15 @@
 import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { calculateActiveBalance } from './money'
+import { AVATAR_MIME, shrinkImageFile } from './image'
 
-export type Client = { id: string; store_id: string; name: string; phone: string | null; nickname: string | null; note: string | null; active: boolean; created_at?: string; updated_at?: string }
+/** Las fotos de cliente viven en el bucket privado existente, bajo prefijo propio. */
+export const PHOTO_BUCKET = 'ticket-photos'
+export const CLIENT_PHOTO_PREFIX = 'client-photos'
+/** Las signed URL de avatar duran una hora y se renuevan en cada carga del panel. */
+export const PHOTO_URL_TTL_SECONDS = 3600
+
+export type Client = { id: string; store_id: string; name: string; phone: string | null; nickname: string | null; note: string | null; photo_path?: string | null; active: boolean; created_at?: string; updated_at?: string }
 /** `opening_balance` = deuda anterior a La Libreta, migrada desde los tickets de papel. */
 export type MovementOrigin = 'purchase' | 'opening_balance'
 // `origin` es opcional porque las filas leidas antes de aplicar la migracion 202608270003 no lo traen.
@@ -53,23 +60,87 @@ async function currentStore(user: User): Promise<string> {
   return (await currentProfile(user)).store_id
 }
 
-export async function loadDashboard(user: User): Promise<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean; displayName: string | null }> {
+function photoExtension(mime: string): string {
+  if (mime === 'image/png') return 'png'
+  if (mime === 'image/webp') return 'webp'
+  return 'jpg'
+}
+
+/** Signed URLs temporales por ruta. Nunca se expone una URL publica permanente. */
+export async function signedPhotoUrls(paths: string[]): Promise<Record<string, string>> {
+  if (paths.length === 0) return {}
+  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, PHOTO_URL_TTL_SECONDS)
+  if (error || !data) return {}
+  const urls: Record<string, string> = {}
+  for (const item of data) {
+    if (item.path && item.signedUrl) urls[item.path] = item.signedUrl
+  }
+  return urls
+}
+
+/**
+ * Sube la foto del cliente ya reducida y deja la referencia en `clients.photo_path`.
+ * La imagen no entra en la base de datos: solo su ruta en Storage privado.
+ */
+export async function attachClientPhoto(user: User, client: Client, file: File): Promise<Client> {
+  const storeId = await currentStore(user)
+  const image = await shrinkImageFile(file)
+  const contentType = image.type || AVATAR_MIME
+  const path = `${storeId}/${CLIENT_PHOTO_PREFIX}/${client.id}/${crypto.randomUUID()}.${photoExtension(contentType)}`
+  const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(path, image, { contentType, upsert: false })
+  if (uploadError) throw uploadError
+  const { data, error } = await supabase.from('clients').update({ photo_path: path }).eq('id', client.id).eq('store_id', storeId).select().single()
+  if (error) throw error
+  await discardPhotoObject(client.photo_path)
+  return data as Client
+}
+
+/** Quitar la foto no borra al cliente ni su historial: solo suelta la referencia. */
+export async function removeClientPhoto(user: User, client: Client): Promise<Client> {
+  const storeId = await currentStore(user)
+  const { data, error } = await supabase.from('clients').update({ photo_path: null }).eq('id', client.id).eq('store_id', storeId).select().single()
+  if (error) throw error
+  await discardPhotoObject(client.photo_path)
+  return data as Client
+}
+
+// Limpieza best-effort: si falla, el objeto queda huerfano pero ya no lo referencia
+// nadie, y no tiene sentido dar por fallida una operacion que si se completo.
+async function discardPhotoObject(path: string | null | undefined): Promise<void> {
+  if (!path) return
+  try {
+    await supabase.storage.from(PHOTO_BUCKET).remove([path])
+  } catch {
+    // ignorado a proposito
+  }
+}
+
+export async function loadDashboard(user: User): Promise<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean; supportsClientPhoto: boolean; photoUrls: Record<string, string>; displayName: string | null }> {
   const profile = await currentProfile(user)
   const storeId = profile.store_id
-  const [{ data: clients, error: clientsError }, { data: tickets, error: ticketsError }, { data: payments, error: paymentsError }, originProbe] = await Promise.all([
+  const [{ data: clients, error: clientsError }, { data: tickets, error: ticketsError }, { data: payments, error: paymentsError }, originProbe, photoProbe] = await Promise.all([
     supabase.from('clients').select('*').eq('store_id', storeId).eq('active', true).order('name'),
     supabase.from('tickets').select('*').eq('store_id', storeId).eq('status', 'active'),
     supabase.from('payments').select('*').eq('store_id', storeId).is('voided_at', null),
-    // Sonda de esquema: si la migracion 202608270003 aun no esta aplicada, la
-    // columna no existe y la accion de saldo anterior no se ofrece.
+    // Sondas de esquema: si la migracion correspondiente aun no esta aplicada la
+    // columna no existe, y la funcionalidad no se ofrece en vez de fallar al guardar.
     supabase.from('tickets').select('origin').limit(1),
+    supabase.from('clients').select('photo_path').limit(1),
   ])
   if (clientsError || ticketsError || paymentsError) throw clientsError ?? ticketsError ?? paymentsError
   const summaries = summarizeClients(clients as Client[], tickets as Ticket[], payments as Payment[])
+  const urlsByPath = await signedPhotoUrls(summaries.map((client) => client.photo_path).filter((path): path is string => Boolean(path)))
+  const photoUrls: Record<string, string> = {}
+  for (const client of summaries) {
+    const url = client.photo_path ? urlsByPath[client.photo_path] : undefined
+    if (url) photoUrls[client.id] = url
+  }
   return {
     clients: summaries,
     total: summaries.reduce((sum, client) => sum + Math.max(client.balance, 0), 0),
     supportsOpeningBalance: !originProbe.error,
+    supportsClientPhoto: !photoProbe.error,
+    photoUrls,
     displayName: profile.display_name,
   }
 }

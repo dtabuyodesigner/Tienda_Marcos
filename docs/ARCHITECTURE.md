@@ -12,6 +12,8 @@ Tickets y pagos usan `BIGINT amount_cents`, nunca float. Sus operaciones económ
 
 `tickets.origin` distingue el tipo de movimiento de deuda: `purchase` es una compra real de mostrador y `opening_balance` es la deuda que el cliente ya tenia antes de usar La Libreta. Ambos suman igual al saldo, pero nunca se confunden: el origen es inmutable por trigger, un saldo anterior no admite foto de ticket y un indice unico parcial impide que un cliente tenga dos saldos anteriores vivos a la vez.
 
+`clients.photo_path` guarda, si existe, la ruta del avatar en el bucket privado `ticket-photos` bajo `<store_id>/client-photos/<client_id>/`. La imagen nunca se guarda en la base de datos y siempre se lee con signed URL temporal. Un `check` obliga a que la ruta empiece por la tienda del propio cliente.
+
 `clients` admite `nickname` y `note` como campos opcionales de ayuda operativa. El apodo participa en busqueda; la nota se muestra en la ficha sin intervenir en calculos economicos.
 
 ## UX Y Orden
