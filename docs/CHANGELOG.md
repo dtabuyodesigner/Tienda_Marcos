@@ -1,5 +1,10 @@
 # Changelog
 
+## Pendiente - Diagnostico del envio por email
+
+- La Edge Function devuelve ahora `upstreamStatus` con el codigo HTTP del proveedor de correo cuando el envio falla. Sin ese dato no habia forma de distinguir una clave rechazada de un remitente no verificado sin mirar la clave, que es justo lo que no se puede hacer. Nunca se devuelve la clave ni el cuerpo de la respuesta del proveedor.
+- Prueba de extremo a extremo desde produccion: todo el camino funciona hasta el envio; Brevo responde 401 y rechaza la clave. Detalle en `docs/PENDIENTES.md`.
+
 ## Pendiente - Compartir la cuenta: email, PDF y WhatsApp
 
 Base: `5bb1b3aecd44a38216cda8e65c5669fc4605e3cd`.

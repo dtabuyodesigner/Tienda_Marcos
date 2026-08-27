@@ -107,7 +107,9 @@ Sin bloqueos documentados ahora mismo.
 
 - Estado: **IMPLEMENTADO Y DESPLEGADO, PENDIENTE DE SECRETO**. No se declara validado de extremo a extremo porque todavia no se ha enviado ningun correo real.
 - Hecho: Edge Function `send-account-summary` desplegada en `Marcos_Tienda`, autorizacion comprobada contra la funcion real (cross-store rechazado, cliente inexistente rechazado, datos inyectados en el cuerpo ignorados, cliente sin email avisado), tabla `account_summary_sends` con RLS, limite de reenvio de 60 segundos y bloqueo de doble envio en la interfaz.
-- **Lo que falta, y es lo unico**: configurar los secretos en Supabase. Con `supabase secrets set BREVO_API_KEY=... ACCOUNT_EMAIL_FROM=... ACCOUNT_EMAIL_FROM_NAME='La Libreta de Marcos'`. El remitente tiene que ser uno verificado en Brevo. Hoy `supabase secrets list` esta vacio.
+- **Lo que falta, y es lo unico**: una clave de API transaccional de Brevo valida. Los tres secretos ya estan configurados en Supabase, pero Brevo responde **HTTP 401** al enviar, es decir rechaza la clave. Un remitente no verificado daria 400, no 401, asi que el problema es la clave en si.
+- Sospecha principal: se ha guardado la clave SMTP (la que usa Supabase Auth, empieza por `xsmtpsib-`) en vez de una clave de API v3 (empieza por `xkeysib-`). Son credenciales distintas y la API transaccional solo acepta la segunda. Se crea en Brevo: SMTP & API -> API Keys -> Generate a new API key.
+- Prueba de extremo a extremo realizada el 28 de agosto de 2026 desde produccion, con tienda, tendero y cliente ficticios: sesion correcta, cliente resuelto, resumen construido y llamada a Brevo realizada. Fallo unicamente en el envio, con 401 del proveedor. Datos de prueba eliminados sin residuos.
 - Comprobado que la funcion llega hasta el punto exacto del envio: con un cliente propio con email responde `email_not_configured`, no un fallo anterior.
 
 ### Identidad visual / logo de la tienda

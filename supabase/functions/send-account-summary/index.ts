@@ -44,9 +44,14 @@ function json(status: number, body: unknown): Response {
   })
 }
 
-/** El `message` lo lee una persona no tecnica: nada de codigos ni jerga. */
-function fail(status: number, code: ErrorCode, message: string): Response {
-  return json(status, { ok: false, code, message })
+/**
+ * El `message` lo lee una persona no tecnica: nada de codigos ni jerga.
+ * `upstreamStatus` es solo el codigo HTTP que devolvio el proveedor de correo,
+ * para poder distinguir "clave rechazada" de "remitente no valido" sin tener que
+ * mirar logs. Nunca lleva la clave ni el cuerpo de la respuesta del proveedor.
+ */
+function fail(status: number, code: ErrorCode, message: string, upstreamStatus?: number): Response {
+  return json(status, upstreamStatus === undefined ? { ok: false, code, message } : { ok: false, code, message, upstreamStatus })
 }
 
 async function readClientId(request: Request): Promise<string | null> {
@@ -107,12 +112,12 @@ async function sendWithBrevo(
   await response.body?.cancel()
 
   if (response.status === 429) {
-    return fail(429, 'rate_limited', 'Se han enviado demasiados correos seguidos. Espera unos minutos y vuelve a intentarlo.')
+    return fail(429, 'rate_limited', 'Se han enviado demasiados correos seguidos. Espera unos minutos y vuelve a intentarlo.', response.status)
   }
   if (response.status === 401 || response.status === 403) {
-    return fail(500, 'email_not_configured', 'El envío de correos no está bien configurado. Avisa a quien lleva la aplicación.')
+    return fail(500, 'email_not_configured', 'El envío de correos no está bien configurado. Avisa a quien lleva la aplicación.', response.status)
   }
-  return fail(502, 'send_failed', 'No se ha podido enviar el correo. Vuelve a intentarlo en un momento.')
+  return fail(502, 'send_failed', 'No se ha podido enviar el correo. Vuelve a intentarlo en un momento.', response.status)
 }
 
 Deno.serve(async (request: Request): Promise<Response> => {
