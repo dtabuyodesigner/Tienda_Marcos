@@ -6,6 +6,7 @@
 - Proyecto Supabase: `Marcos_Tienda`.
 - Deploy publico: `https://marcos-tienda.vercel.app`.
 - SHA base de Fase 3B Subtrabajo 2: `ab12c75b29c8213f009fb1ea3de5f180df035a91`.
+- SHA de cierre de Fase 3B Subtrabajo 2: `768487a6af929f6cf21f898b3df04f03a892f84f`.
 - `master` es la rama desplegada automaticamente por Vercel: cada push a `master` genera un deployment de produccion. No hay promocion manual, asi que `master` solo debe recibir codigo que pase tests, TypeScript y build.
 
 ## Arquitectura

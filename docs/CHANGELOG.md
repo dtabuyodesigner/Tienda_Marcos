@@ -1,6 +1,6 @@
 # Changelog
 
-## Pendiente - Cierre Fase 3B Subtrabajo 2
+## `768487a6af929f6cf21f898b3df04f03a892f84f` - Cierre Fase 3B Subtrabajo 2
 
 Base: `ab12c75b29c8213f009fb1ea3de5f180df035a91`. Se despliega en produccion automaticamente al hacer push a `master`.
 
