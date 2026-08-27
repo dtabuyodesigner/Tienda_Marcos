@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { User } from '@supabase/supabase-js'
 import { Workspace } from './App'
 import type { Client, ClientSummary } from './lib/data'
-import { createClient, loadClientHistory, loadDashboard } from './lib/data'
+import { createClient, createOpeningBalance, loadClientHistory, loadDashboard } from './lib/data'
+import type { Ticket } from './lib/data'
 
 const { auth } = vi.hoisted(() => ({
   auth: {
@@ -16,12 +17,14 @@ const { auth } = vi.hoisted(() => ({
 }))
 
 vi.mock('./lib/supabase', () => ({ supabase: { auth } }))
-vi.mock('./lib/data', () => ({
+vi.mock('./lib/data', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./lib/data')>(),
   loadDashboard: vi.fn(),
   loadClientHistory: vi.fn(),
   createClient: vi.fn(),
   createTicket: vi.fn(),
   createPayment: vi.fn(),
+  createOpeningBalance: vi.fn(),
   attachTicketPhoto: vi.fn(),
   signedPhotoUrl: vi.fn(),
   voidMovement: vi.fn(),
@@ -33,8 +36,25 @@ function summary(name: string, balance: number, id = name.toLowerCase()): Client
   return { id, store_id: 'store-1', name, phone: null, nickname: null, note: null, active: true, balance, lastActivityAt: '2026-08-27T10:00:00Z' }
 }
 
-function history(client: ClientSummary | Client, balance: number) {
-  return { client: client as Client, tickets: [], payments: [], balance }
+function history(client: ClientSummary | Client, balance: number, tickets: Ticket[] = []) {
+  return { client: client as Client, tickets, payments: [], balance }
+}
+
+function ticket(values: Partial<Ticket> & Pick<Ticket, 'id' | 'amount_cents'>): Ticket {
+  return {
+    store_id: 'store-1',
+    client_id: 'ana',
+    concept: null,
+    photo_path: null,
+    status: 'active',
+    origin: 'purchase',
+    created_by: 'user-1',
+    created_at: '2026-08-27T10:00:00Z',
+    voided_at: null,
+    voided_by: null,
+    void_reason: null,
+    ...values,
+  }
 }
 
 async function openFicha(name: string) {
@@ -43,7 +63,7 @@ async function openFicha(name: string) {
 }
 
 beforeEach(() => {
-  vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 0)], total: 1840 })
+  vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 0)], total: 1840, supportsOpeningBalance: true })
 })
 
 afterEach(() => {
@@ -204,5 +224,173 @@ describe('pantalla Cuenta', () => {
 
     await waitFor(() => expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('marcos@covirantienda.es', expect.objectContaining({ redirectTo: expect.any(String) })))
     expect(await screen.findByRole('status')).toBeTruthy()
+  })
+})
+
+describe('saldo anterior desde la ficha', () => {
+  function pedrito(balance: number, tickets: Ticket[] = []) {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', balance), balance, tickets))
+  }
+
+  async function abrirFormulario() {
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: 'Añadir saldo anterior' }))
+    return screen.findByLabelText(/Importe que ya debía/)
+  }
+
+  it('ofrece la accion sin competir con las acciones principales', async () => {
+    pedrito(0)
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    const accion = await screen.findByRole('button', { name: 'Añadir saldo anterior' })
+    expect(accion.className).toContain('subtle-action')
+    expect(screen.getByRole('button', { name: '+ Nueva compra' }).className).toContain('primary-action')
+  })
+
+  it('no ofrece la accion si el esquema todavia no soporta el origen', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 0)], total: 0, supportsOpeningBalance: false })
+    pedrito(0)
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    await screen.findByRole('button', { name: 'Ver historial' })
+    expect(screen.queryByRole('button', { name: 'Añadir saldo anterior' })).toBeNull()
+  })
+
+  it('no ofrece la accion si el cliente ya tiene un saldo anterior vivo', async () => {
+    pedrito(8640, [ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance' })])
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    await screen.findByRole('button', { name: 'Ver historial' })
+    expect(screen.queryByRole('button', { name: 'Añadir saldo anterior' })).toBeNull()
+  })
+
+  it('explica para que sirve antes de pedir el importe', async () => {
+    pedrito(0)
+    await abrirFormulario()
+
+    expect(screen.getByText('Para apuntar lo que este cliente ya debía antes de empezar a usar La Libreta.')).toBeTruthy()
+  })
+
+  it('pide confirmacion con el importe y guarda el saldo anterior sobre saldo cero', async () => {
+    pedrito(0)
+    const confirm = vi.fn((_message?: string) => true)
+    vi.stubGlobal('confirm', confirm)
+    vi.mocked(createOpeningBalance).mockResolvedValue(ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance' }))
+    const importe = await abrirFormulario()
+
+    fireEvent.change(importe, { target: { value: '86,40' } })
+    fireEvent.change(screen.getByLabelText(/Nota/), { target: { value: 'Tickets de papel' } })
+    pedrito(8640, [ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance' })])
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir saldo anterior' }))
+
+    await waitFor(() => expect(createOpeningBalance).toHaveBeenCalledWith(user, 'ana', 8640, 'Tickets de papel'))
+    expect(confirm.mock.calls[0][0]).toContain('86,40')
+    expect(confirm.mock.calls[0][0]).toContain('ya debía anteriormente')
+    expect(await screen.findByText('✓ Saldo anterior añadido')).toBeTruthy()
+    expect(await screen.findByText(/Ahora Ana debe .*86,40/)).toBeTruthy()
+  })
+
+  it('suma sobre una deuda ya existente en lugar de sustituirla', async () => {
+    pedrito(1200, [ticket({ id: 't-1', amount_cents: 1200 })])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.mocked(createOpeningBalance).mockResolvedValue(ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance' }))
+    const importe = await abrirFormulario()
+
+    fireEvent.change(importe, { target: { value: '86,40' } })
+    pedrito(9840, [ticket({ id: 't-1', amount_cents: 1200 }), ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance' })])
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir saldo anterior' }))
+
+    expect(await screen.findByText(/Ahora Ana debe .*98,40/)).toBeTruthy()
+  })
+
+  it('no guarda nada si se cancela la confirmacion', async () => {
+    pedrito(0)
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    const importe = await abrirFormulario()
+
+    fireEvent.change(importe, { target: { value: '86,40' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir saldo anterior' }))
+
+    await waitFor(() => expect(createOpeningBalance).not.toHaveBeenCalled())
+    expect(screen.getByRole('heading', { name: 'Añadir saldo anterior' })).toBeTruthy()
+  })
+
+  it('rechaza importe cero y negativo sin llegar a la base de datos', async () => {
+    pedrito(0)
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const importe = await abrirFormulario()
+
+    for (const invalido of ['0', '-5', '0,00', 'abc']) {
+      fireEvent.change(importe, { target: { value: invalido } })
+      fireEvent.click(screen.getByRole('button', { name: 'Añadir saldo anterior' }))
+      expect((await screen.findByRole('alert')).textContent).toContain('importe válido')
+    }
+    expect(createOpeningBalance).not.toHaveBeenCalled()
+  })
+
+  it('protege frente a doble submit', async () => {
+    pedrito(0)
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    let resolver: (value: Ticket) => void = () => {}
+    vi.mocked(createOpeningBalance).mockReturnValue(new Promise<Ticket>((resolve) => { resolver = resolve }))
+    const importe = await abrirFormulario()
+
+    fireEvent.change(importe, { target: { value: '86,40' } })
+    const boton = screen.getByRole('button', { name: 'Añadir saldo anterior' })
+    fireEvent.click(boton)
+    fireEvent.click(boton)
+    fireEvent.click(boton)
+
+    expect(createOpeningBalance).toHaveBeenCalledTimes(1)
+    resolver(ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance' }))
+  })
+
+  it('avisa si la base de datos rechaza un segundo saldo anterior', async () => {
+    pedrito(0)
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.mocked(createOpeningBalance).mockRejectedValue({ code: '23505' })
+    const importe = await abrirFormulario()
+
+    fireEvent.change(importe, { target: { value: '86,40' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir saldo anterior' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ya tiene un saldo anterior registrado')
+  })
+})
+
+describe('historial con saldo anterior', () => {
+  it('distingue Saldo anterior de Compra y refleja la anulacion', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1200), 1200, [
+      ticket({ id: 't-1', amount_cents: 1200, concept: 'Pan y leche' }),
+      ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance', status: 'voided', voided_at: '2026-08-27T12:00:00Z', void_reason: 'Importe equivocado' }),
+    ]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver historial' }))
+
+    const anterior = await screen.findByText('Saldo anterior')
+    const fila = anterior.closest('button')!
+    expect(fila.textContent).toContain('Registrado el')
+    expect(fila.textContent).toContain('Anulado')
+    expect(fila.textContent).not.toContain('Compra')
+
+    const compra = screen.getByText(/^Compra · Activo/)
+    expect(compra.closest('button')!.textContent).toContain('Pan y leche')
+  })
+
+  it('el saldo anterior anulado no cuenta en la deuda de la ficha', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1200), 1200, [
+      ticket({ id: 't-1', amount_cents: 1200 }),
+      ticket({ id: 'ob-1', amount_cents: 8640, origin: 'opening_balance', status: 'voided', voided_at: '2026-08-27T12:00:00Z', void_reason: 'Importe equivocado' }),
+    ]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    expect((await screen.findByRole('button', { name: /^Cobrar/ })).textContent).toContain('12,00')
+    expect(screen.getByRole('button', { name: 'Añadir saldo anterior' })).toBeTruthy()
   })
 })

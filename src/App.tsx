@@ -4,8 +4,12 @@ import { supabase } from './lib/supabase'
 import {
   attachTicketPhoto,
   createClient,
+  createOpeningBalance,
   createPayment,
   createTicket,
+  hasActiveOpeningBalance,
+  isDuplicateOpeningBalance,
+  isOpeningBalance,
   loadClientHistory,
   loadDashboard,
   signedPhotoUrl,
@@ -20,6 +24,7 @@ import {
   canRegisterPayment,
   formatCents,
   needsHighTicketConfirmation,
+  openingBalanceConfirmation,
   parseEuroToCents,
   recentClients,
   searchClients,
@@ -27,7 +32,7 @@ import {
 } from './lib/money'
 import { MIN_PASSWORD_LENGTH, passwordProblem } from './lib/account'
 
-type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'history' | 'account' | 'settings'
+type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings'
 type Notice = { tone: 'success' | 'error'; title?: string; message: string }
 type DisplayMovement = (Ticket & { kind: 'ticket' }) | (Payment & { kind: 'payment' })
 
@@ -126,6 +131,7 @@ export function Workspace({ user }: { user: User }) {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [refreshing, setRefreshing] = useState(true)
   const [newClientOrigin, setNewClientOrigin] = useState<'home' | 'client'>('home')
+  const [supportsOpeningBalance, setSupportsOpeningBalance] = useState(false)
 
   async function refresh(options: { keepNotice?: boolean } = {}) {
     setRefreshing(true)
@@ -133,6 +139,7 @@ export function Workspace({ user }: { user: User }) {
       const dashboard = await loadDashboard(user)
       setClients(dashboard.clients)
       setTotal(dashboard.total)
+      setSupportsOpeningBalance(dashboard.supportsOpeningBalance)
       if (!options.keepNotice) setNotice(null)
     } catch {
       setNotice({ tone: 'error', message: 'No se pudieron cargar los datos. Comprueba la conexión y vuelve a intentarlo.' })
@@ -182,8 +189,21 @@ export function Workspace({ user }: { user: User }) {
     }
   }
 
+  async function finishOpeningBalance(client: Client | ClientSummary, addedCents: number) {
+    try {
+      const history = await loadClientHistory(user, client.id)
+      setSelectedClient({ ...history.client, balance: history.balance, lastActivityAt: new Date().toISOString() })
+      setNotice({ tone: 'success', title: '✓ Saldo anterior añadido', message: `Ahora ${client.name} debe ${formatCents(history.balance)}` })
+      await refresh({ keepNotice: true })
+    } catch {
+      setNotice({ tone: 'error', title: `Saldo anterior añadido (${formatCents(addedCents)})`, message: 'Se guardó, pero no se pudo leer el saldo actualizado. Comprueba la conexión.' })
+    } finally {
+      setView('client')
+    }
+  }
+
   if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
-  return <main className="app-shell"><header className="topbar"><button className="brand-button" onClick={() => setView('home')}><span className="eyebrow">La Libreta de Marcos</span><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></button><div className="top-actions"><button className="text-button" onClick={() => setView('settings')}>Cuenta</button><button className="text-button" onClick={() => void supabase.auth.signOut()}>Salir</button></div></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => setView('choose-client')} />}{view === 'new-client' && <NewClient user={user} allowContinue={newClientOrigin !== 'client'} onBack={() => setView(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); void refresh({ keepNotice: Boolean(notice) }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => setView('home')} onClient={(client) => { setSelectedClient(client); setView('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => setView('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} onBack={() => setView('home')} onBuy={() => setView('purchase')} onCharge={() => setView('charge')} onNewClient={() => openNewClient('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} onHistory={() => setView('history')} onAccount={() => setView('account')} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => setView('client')} onChanged={() => { void refresh({ keepNotice: Boolean(notice) }); setView('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => setView('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => setView('home')} />}</div></main>
+  return <main className="app-shell"><header className="topbar"><button className="brand-button" onClick={() => setView('home')}><span className="eyebrow">La Libreta de Marcos</span><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></button><div className="top-actions"><button className="text-button" onClick={() => setView('settings')}>Cuenta</button><button className="text-button" onClick={() => void supabase.auth.signOut()}>Salir</button></div></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => setView('choose-client')} />}{view === 'new-client' && <NewClient user={user} allowContinue={newClientOrigin !== 'client'} onBack={() => setView(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); void refresh({ keepNotice: Boolean(notice) }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => setView('home')} onClient={(client) => { setSelectedClient(client); setView('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => setView('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} onBack={() => setView('home')} onBuy={() => setView('purchase')} onCharge={() => setView('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => setView('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} onHistory={() => setView('history')} onAccount={() => setView('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} onBack={() => setView('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => setView('client')} onChanged={() => { void refresh({ keepNotice: Boolean(notice) }); setView('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => setView('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => setView('home')} />}</div></main>
 }
 
 function Home({ clients, total, busy, onClient, onNew, onBuy }: { clients: ClientSummary[]; total: number; busy: boolean; onClient: (client: ClientSummary) => void; onNew: () => void; onBuy: () => void }) {
@@ -280,14 +300,42 @@ function Purchase({ user, client, onBack, onSaved }: { user: User; client: Clien
   return <FormPage title="Nueva compra" onBack={onBack}><div className="selected"><span className="avatar">{client.name.charAt(0)}</span><strong>{client.name}</strong></div><form onSubmit={submit}><label>Importe<input inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} required disabled={Boolean(existingTicket)} /></label><label>Concepto <span className="muted">(opcional)</span><input value={concept} onChange={(event) => setConcept(event.target.value)} disabled={Boolean(existingTicket)} /></label><div className="photo-input"><span className="label">Foto del ticket <span className="muted">(opcional)</span></span><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /><label className="photo-button" htmlFor={photoInputId}>Hacer foto del ticket</label>{photo && <button type="button" className="text-button" onClick={() => setPhoto(null)}>Quitar foto</button>}</div>{photo && <div className="photo-preview"><img src={previewUrl} alt="Vista previa de la foto del ticket" /><span>{photo.name}</span></div>}{error && <p className="error">{error}</p>}{existingTicket ? <button type="button" disabled={busy || !photo} onClick={() => void retryPhoto()}>{busy ? 'Reintentando...' : 'Reintentar foto'}</button> : <button disabled={busy}>{busy ? 'Guardando...' : 'Guardar compra'}</button>}</form></FormPage>
 }
 
-function ClientPage({ user, client, onBack, onBuy, onCharge, onNewClient, onTicket, onHistory, onAccount }: { user: User; client: Client | ClientSummary; onBack: () => void; onBuy: () => void; onCharge: () => void; onNewClient: () => void; onTicket: (ticket: Ticket) => void; onHistory: () => void; onAccount: () => void }) {
+function ClientPage({ user, client, canAddOpeningBalance, onBack, onBuy, onCharge, onNewClient, onOpeningBalance, onTicket, onHistory, onAccount }: { user: User; client: Client | ClientSummary; canAddOpeningBalance: boolean; onBack: () => void; onBuy: () => void; onCharge: () => void; onNewClient: () => void; onOpeningBalance: () => void; onTicket: (ticket: Ticket) => void; onHistory: () => void; onAccount: () => void }) {
   const [data, setData] = useState<{ tickets: Ticket[]; payments: Payment[]; balance: number } | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => { void loadClientHistory(user, client.id).then(setData).catch(() => setError('No se pudo cargar la ficha. Comprueba la conexión.')) }, [user, client.id])
 
   const balance = data?.balance ?? ('balance' in client ? client.balance : 0)
-  return <FormPage title={client.name} onBack={onBack}><div className="balance-card"><span className="label">{balance > 0 ? 'Deuda actual' : 'Estado'}</span><strong>{balance > 0 ? formatCents(balance) : 'No debe nada'}</strong>{client.note && <p>{client.note}</p>}</div><div className="actions"><button className="primary-action" onClick={onBuy}>+ Nueva compra</button>{canChargeClient(balance) && <button className="secondary-action" onClick={onCharge}>Cobrar {formatCents(balance)}</button>}</div><div className="secondary-actions"><button className="secondary-action subtle-action" onClick={onHistory}>Ver historial</button><button className="secondary-action subtle-action" onClick={onAccount}>Ver cuenta</button><button className="secondary-action subtle-action" onClick={onNewClient}>+ Nuevo cliente</button></div><div className="section-heading"><h2>Movimientos</h2></div>{error && <p className="error">{error}</p>}{data?.tickets.filter((ticket) => ticket.status === 'active').map((ticket) => <button className="movement" key={ticket.id} onClick={() => onTicket(ticket)}><span><b>{formatDateTime(ticket.created_at)}</b><small>{ticket.concept || 'Compra'}{ticket.photo_path ? ' · Foto' : ''}</small></span><strong className="debt">+ {formatCents(ticket.amount_cents)}</strong></button>)}{data?.payments.filter((payment) => !payment.voided_at).map((payment) => <PaymentRow key={payment.id} user={user} payment={payment} onChanged={() => void loadClientHistory(user, client.id).then(setData)} />)}{data && data.tickets.length === 0 && data.payments.length === 0 && <p className="empty">Todavía no hay movimientos.</p>}{!data && <p className="muted">Cargando movimientos...</p>}</FormPage>
+  return <FormPage title={client.name} onBack={onBack}><div className="balance-card"><span className="label">{balance > 0 ? 'Deuda actual' : 'Estado'}</span><strong>{balance > 0 ? formatCents(balance) : 'No debe nada'}</strong>{client.note && <p>{client.note}</p>}</div><div className="actions"><button className="primary-action" onClick={onBuy}>+ Nueva compra</button>{canChargeClient(balance) && <button className="secondary-action" onClick={onCharge}>Cobrar {formatCents(balance)}</button>}</div><div className="secondary-actions"><button className="secondary-action subtle-action" onClick={onHistory}>Ver historial</button><button className="secondary-action subtle-action" onClick={onAccount}>Ver cuenta</button><button className="secondary-action subtle-action" onClick={onNewClient}>+ Nuevo cliente</button>{canAddOpeningBalance && data && !hasActiveOpeningBalance(data.tickets) && <button className="secondary-action subtle-action" onClick={onOpeningBalance}>Añadir saldo anterior</button>}</div><div className="section-heading"><h2>Movimientos</h2></div>{error && <p className="error">{error}</p>}{data?.tickets.filter((ticket) => ticket.status === 'active').map((ticket) => <button className="movement" key={ticket.id} onClick={() => onTicket(ticket)}><span><b>{movementHeadline(ticket)}</b><small>{movementDetail(ticket)}</small></span><strong className="debt">+ {formatCents(ticket.amount_cents)}</strong></button>)}{data?.payments.filter((payment) => !payment.voided_at).map((payment) => <PaymentRow key={payment.id} user={user} payment={payment} onChanged={() => void loadClientHistory(user, client.id).then(setData)} />)}{data && data.tickets.length === 0 && data.payments.length === 0 && <p className="empty">Todavía no hay movimientos.</p>}{!data && <p className="muted">Cargando movimientos...</p>}</FormPage>
+}
+
+function OpeningBalance({ user, client, onBack, onSaved }: { user: User; client: Client | ClientSummary; onBack: () => void; onSaved: (addedCents: number) => void | Promise<void> }) {
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    const cents = parseEuroToCents(amount)
+    if (cents === null) { setError('Introduce un importe válido, por ejemplo 86,40.'); return }
+    if (!window.confirm(openingBalanceConfirmation(client.name, cents))) return
+    setBusy(true)
+    setError('')
+    try {
+      await createOpeningBalance(user, client.id, cents, note)
+      await onSaved(cents)
+    } catch (cause) {
+      setError(isDuplicateOpeningBalance(cause)
+        ? 'Este cliente ya tiene un saldo anterior registrado. Anúlalo antes de registrar otro.'
+        : 'No se ha podido guardar. Comprueba la conexión y vuelve a intentarlo.')
+      setBusy(false)
+    }
+  }
+
+  return <FormPage title="Añadir saldo anterior" onBack={onBack}><div className="selected"><span className="avatar">{client.name.charAt(0)}</span><strong>{client.name}</strong></div><p className="muted">Para apuntar lo que este cliente ya debía antes de empezar a usar La Libreta.</p><form onSubmit={submit}><label>Importe que ya debía<input autoFocus inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} required /></label><label>Nota <span className="muted">(opcional)</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Tickets de papel hasta agosto" maxLength={160} /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : 'Añadir saldo anterior'}</button></form></FormPage>
 }
 
 function PaymentRow({ user, payment, onChanged }: { user: User; payment: Payment; onChanged: () => void }) {
@@ -328,7 +376,7 @@ function TicketPage({ user, ticket, onBack, onChanged }: { user: User; ticket: T
     }
   }
 
-  return <FormPage title="Detalle del ticket" onBack={onBack}><div className="detail"><span className="label">{formatDateTime(ticket.created_at)} · {ticket.status === 'voided' ? 'Anulado' : 'Activo'}</span><strong>{formatCents(ticket.amount_cents)}</strong><p>{ticket.concept || 'Sin concepto'}</p>{photoUrl && <img className="ticket-photo" src={photoUrl} alt="Foto del ticket" />}</div>{ticket.status === 'active' && <><label>Motivo de anulación<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Necesario para anular" /></label>{error && <p className="error">{error}</p>}<button className="danger-action" disabled={busy || !reason.trim()} onClick={() => void cancel()}>{busy ? 'Anulando...' : 'Anular ticket'}</button></>}</FormPage>
+  return <FormPage title={isOpeningBalance(ticket) ? 'Detalle del saldo anterior' : 'Detalle del ticket'} onBack={onBack}><div className="detail"><span className="label">{isOpeningBalance(ticket) ? 'Saldo anterior' : 'Compra'} · {formatDateTime(ticket.created_at)} · {ticket.status === 'voided' ? 'Anulado' : 'Activo'}</span><strong>{formatCents(ticket.amount_cents)}</strong><p>{ticket.concept || (isOpeningBalance(ticket) ? 'Deuda anterior a La Libreta' : 'Sin concepto')}</p>{photoUrl && <img className="ticket-photo" src={photoUrl} alt="Foto del ticket" />}</div>{ticket.status === 'active' && <><label>Motivo de anulación<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Necesario para anular" /></label>{error && <p className="error">{error}</p>}<button className="danger-action" disabled={busy || !reason.trim()} onClick={() => void cancel()}>{busy ? 'Anulando...' : 'Anular ticket'}</button></>}</FormPage>
 }
 
 function Charge({ user, client, onBack, onPaid }: { user: User; client: Client | ClientSummary; onBack: () => void; onPaid: (paidCents: number) => void | Promise<void> }) {
@@ -378,7 +426,7 @@ function movementsForDisplay(tickets: Ticket[], payments: Payment[]): DisplayMov
 }
 
 function MovementList({ movements, onTicket, empty = 'Todavía no hay movimientos.' }: { movements: DisplayMovement[]; onTicket: (ticket: Ticket) => void; empty?: string }) {
-  return <div className="history-list">{movements.map((movement) => movement.kind === 'ticket' ? <button className="movement" key={movement.id} onClick={() => onTicket(movement)}><span><b>{formatDateTime(movement.created_at)}</b><small>Compra · {movement.status === 'voided' ? 'Anulado' : 'Activo'}{movement.photo_path ? ' · Foto' : ''}{movement.concept ? ` · ${movement.concept}` : ''}</small></span><strong className={movement.status === 'voided' ? 'muted' : 'debt'}>{formatCents(movement.amount_cents)}</strong></button> : <div className="movement payment" key={movement.id}><span><b>{formatDateTime(movement.created_at)}</b><small>Pago · {movement.voided_at ? 'Anulado' : 'Activo'}</small></span><strong className={movement.voided_at ? 'muted' : 'paid'}>- {formatCents(movement.amount_cents)}</strong></div>)}{movements.length === 0 && <p className="empty">{empty}</p>}</div>
+  return <div className="history-list">{movements.map((movement) => movement.kind === 'ticket' ? <button className="movement" key={movement.id} onClick={() => onTicket(movement)}><span><b>{movementHeadline(movement)}</b><small>{movementDetail(movement, { withStatus: true })}</small></span><strong className={movement.status === 'voided' ? 'muted' : 'debt'}>{formatCents(movement.amount_cents)}</strong></button> : <div className="movement payment" key={movement.id}><span><b>{formatDateTime(movement.created_at)}</b><small>Pago · {movement.voided_at ? 'Anulado' : 'Activo'}</small></span><strong className={movement.voided_at ? 'muted' : 'paid'}>- {formatCents(movement.amount_cents)}</strong></div>)}{movements.length === 0 && <p className="empty">{empty}</p>}</div>
 }
 
 function Settings({ user, onBack }: { user: User; onBack: () => void }) {
@@ -433,6 +481,19 @@ function Settings({ user, onBack }: { user: User; onBack: () => void }) {
 
 function FormPage({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
   return <section className="page"><button className="back" onClick={onBack}>← Volver</button><h1>{title}</h1>{children}</section>
+}
+
+/** Un saldo anterior no es una compra hecha ese dia: se titula por lo que es. */
+function movementHeadline(ticket: Ticket): string {
+  return isOpeningBalance(ticket) ? 'Saldo anterior' : formatDateTime(ticket.created_at)
+}
+
+function movementDetail(ticket: Ticket, options: { withStatus?: boolean } = {}): string {
+  const parts = [isOpeningBalance(ticket) ? `Registrado el ${formatDateTime(ticket.created_at)}` : 'Compra']
+  if (options.withStatus) parts.push(ticket.status === 'voided' ? 'Anulado' : 'Activo')
+  if (ticket.concept) parts.push(ticket.concept)
+  if (ticket.photo_path) parts.push('Foto')
+  return parts.join(' · ')
 }
 
 function formatDateTime(value: string) {

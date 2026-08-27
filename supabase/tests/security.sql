@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(13);
 create temp table test_state (ticket_id uuid);
 
 -- El runner de Supabase proporciona estos helpers en un proyecto local.
@@ -30,5 +30,20 @@ set status = 'voided', voided_at = now(), voided_by = auth.uid(), void_reason = 
 where id = (select ticket_id from test_state);
 select isnt((select voided_at from public.tickets where id = (select ticket_id from test_state)), null, 'Anulacion conserva fecha');
 select isnt((select voided_by from public.tickets where id = (select ticket_id from test_state)), null, 'Anulacion conserva autor');
+
+-- Saldo anterior: origen explicito, unicidad, inmutabilidad y anulacion.
+select throws_ok($$insert into public.tickets(store_id, client_id, amount_cents, photo_path, created_by, origin) values ('00000000-0000-0000-0000-00000000000a', (select id from public.clients where name = 'Marcos'), 8640, '00000000-0000-0000-0000-00000000000a/x/y.jpg', auth.uid(), 'opening_balance')$$, null, null, 'El saldo anterior no admite foto de ticket');
+
+insert into public.tickets(store_id, client_id, amount_cents, concept, created_by, origin)
+values ('00000000-0000-0000-0000-00000000000a', (select id from public.clients where name = 'Marcos'), 8640, 'Tickets de papel', auth.uid(), 'opening_balance');
+
+select is((select amount_cents from public.tickets where origin = 'opening_balance' and status = 'active'), 8640::bigint, 'El saldo anterior guarda el importe en centimos');
+select throws_ok($$insert into public.tickets(store_id, client_id, amount_cents, created_by, origin) values ('00000000-0000-0000-0000-00000000000a', (select id from public.clients where name = 'Marcos'), 500, auth.uid(), 'opening_balance')$$, null, null, 'No permite dos saldos anteriores vivos del mismo cliente');
+select throws_ok($$update public.tickets set origin = 'purchase' where origin = 'opening_balance'$$, null, null, 'El origen del movimiento no se puede reescribir');
+
+update public.tickets set status = 'voided', voided_at = now(), voided_by = auth.uid(), void_reason = 'Importe equivocado'
+where origin = 'opening_balance' and status = 'active';
+select lives_ok($$insert into public.tickets(store_id, client_id, amount_cents, created_by, origin) values ('00000000-0000-0000-0000-00000000000a', (select id from public.clients where name = 'Marcos'), 9840, auth.uid(), 'opening_balance')$$, 'Tras anular se puede registrar el saldo anterior corregido');
+
 select * from finish();
 rollback;

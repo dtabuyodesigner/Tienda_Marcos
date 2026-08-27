@@ -31,6 +31,7 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 - Historial conserva compras y pagos anulados.
 - Desde la ficha de un cliente se puede crear otro cliente sin volver a Inicio: al guardar se abre la ficha nueva y al cancelar se vuelve a la ficha anterior.
 - `Cobrar` solo aparece cuando el cliente debe algo.
+- `Añadir saldo anterior` registra la deuda que el cliente ya tenia en tickets de papel antes de empezar a usar la aplicacion. Es un unico movimiento con origen propio, no una compra inventada, y aparece en el historial como `Saldo anterior`.
 - Cuenta permite ver el email, cambiar la contrasena y cerrar sesion. El cambio de contrasena exige reautenticacion con la contrasena actual antes de mostrar los campos de contrasena nueva.
 
 ## Base De Datos
@@ -45,6 +46,7 @@ Las migraciones versionadas estan en `supabase/migrations/`.
 
 - `202608270001_initial_schema.sql`: tiendas, perfiles, clientes, tickets, pagos, RLS y Storage privado.
 - `202608270002_add_client_reference_fields.sql`: apodo/referencia y nota corta de cliente.
+- `202608270003_add_movement_origin.sql`: origen del movimiento (`purchase` / `opening_balance`) para el saldo anterior a La Libreta.
 
 El dinero se guarda siempre como centimos enteros (`amount_cents`). El saldo no se duplica: se calcula como tickets activos menos pagos no anulados.
 
@@ -59,7 +61,7 @@ npm run build
 npm run test:security
 ```
 
-Las pruebas unitarias cubren reglas economicas, busqueda, orden de clientes, recientes, umbral de importe alto, reglas de contrasena y subida de fotos. Las pruebas de interfaz se ejecutan con jsdom y Testing Library y cubren la ficha de cliente con y sin deuda, el alta de cliente desde la ficha y la reautenticacion de `Cuenta`. Las pruebas pgTAP comprueban aislamiento entre tiendas, acceso anonimo, integridad de importes y trazabilidad de anulaciones.
+Las pruebas unitarias cubren reglas economicas, busqueda, orden de clientes, recientes, umbral de importe alto, reglas de contrasena, saldo anterior y subida de fotos. Las pruebas de interfaz se ejecutan con jsdom y Testing Library y cubren la ficha de cliente con y sin deuda, el alta de cliente desde la ficha y la reautenticacion de `Cuenta`. Las pruebas pgTAP comprueban aislamiento entre tiendas, acceso anonimo, integridad de importes, trazabilidad de anulaciones y las reglas del saldo anterior. `npm run test:security` necesita Supabase CLI y Docker; donde no esten disponibles, esas pruebas no se pueden ejecutar y no deben darse por pasadas.
 
 ## Seguridad
 

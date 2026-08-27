@@ -1,5 +1,33 @@
 # Changelog
 
+## Pendiente - P1 Migracion inicial de saldos desde papel
+
+Base: `05fc2ac211402a1549b25b37bdbca0ac5f38d089`.
+
+### Modelo de datos
+
+- Nueva migracion versionada `202608270003_add_movement_origin.sql`. No se modifica ninguna migracion anterior.
+- Anadido el tipo `public.movement_origin` (`purchase` | `opening_balance`) y la columna `tickets.origin`, con default `purchase` para las filas ya existentes.
+- Constraint que impide adjuntar foto de ticket a un saldo anterior.
+- Indice unico parcial que impide dos saldos anteriores vivos del mismo cliente.
+- Trigger `protect_ticket_origin`: el origen no se puede reescribir tras crear el movimiento.
+
+### Funcionalidad
+
+- Accion secundaria `Añadir saldo anterior` en la ficha de cliente, con importe obligatorio, nota opcional y texto explicativo.
+- Confirmacion previa con el importe, que reutiliza el aviso de importe alto en el mismo dialogo.
+- Aviso posterior `✓ Saldo anterior añadido` con el saldo actualizado.
+- Proteccion frente a doble envio en interfaz y en base de datos.
+- El historial distingue `Saldo anterior` de `Compra` y no lo presenta como una compra hecha ese dia: la fecha se etiqueta como registro.
+- La anulacion reutiliza la trazabilidad existente y descuenta el importe del saldo.
+- La accion desaparece de la ficha cuando el cliente ya tiene un saldo anterior vivo.
+- La aplicacion detecta al cargar si el esquema soporta `origin`; mientras la migracion no este aplicada, la accion no se ofrece en lugar de fallar.
+
+### Tests
+
+- 54 pruebas en verde: aritmetica de saldo con saldo anterior sobre cero y sobre deuda existente, anulacion y saldo resultante, rechazo de importe cero y negativo, doble submit, rechazo de duplicado por base de datos, y representacion diferenciada en historial.
+- pgTAP ampliado a 13 asserts con origen, unicidad, inmutabilidad y anulacion. No ejecutable en este entorno por falta de Docker.
+
 ## `768487a6af929f6cf21f898b3df04f03a892f84f` - Cierre Fase 3B Subtrabajo 2
 
 Base: `ab12c75b29c8213f009fb1ea3de5f180df035a91`. Se despliega en produccion automaticamente al hacer push a `master`.

@@ -61,6 +61,15 @@ export function needsHighTicketConfirmation(amountCents: number): boolean {
   return amountCents > HIGH_TICKET_CONFIRMATION_CENTS
 }
 
+/**
+ * Confirmacion antes de registrar deuda anterior a La Libreta.
+ * Reutiliza el umbral de importe alto en el mismo aviso para no encadenar dos dialogos.
+ */
+export function openingBalanceConfirmation(name: string, amountCents: number): string {
+  const base = `Vas a añadir ${formatCents(amountCents)} que ${name} ya debía anteriormente.`
+  return needsHighTicketConfirmation(amountCents) ? `${base}\nEs un importe alto. Comprueba que es correcto.` : base
+}
+
 function timestamp(value?: string | null): number {
   const parsed = Date.parse(value ?? '')
   return Number.isFinite(parsed) ? parsed : 0

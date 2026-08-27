@@ -33,7 +33,10 @@ Sin bloqueos documentados ahora mismo.
 - Descripcion: crear un flujo especifico para trasladar a La Libreta de Marcos las deudas que ya existan antes de empezar a usar la aplicacion. Ejemplo: Pedrito ya debe 86,40 EUR en tickets de papel anteriores y debe registrarse como saldo inicial sin inventar compras nuevas.
 - Utilidad: evita mantener durante semanas dos sistemas paralelos, papel y app, y facilita la implantacion real.
 - Prioridad: P1 alta antes de implantacion definitiva con Marcos.
-- Estado: pendiente.
+- Estado: **implementado en codigo y validado en local, pendiente de aplicar la migracion a `Marcos_Tienda`**. No pasa a resuelto hasta que la migracion este aplicada y verificada contra el proyecto real.
+- Implementado: migracion `supabase/migrations/202608270003_add_movement_origin.sql`, accion `Añadir saldo anterior` en la ficha, representacion diferenciada en historial, anulacion con trazabilidad y pruebas unitarias, de interfaz y pgTAP.
+- Bloqueo para cerrarlo: el entorno de trabajo no tiene Supabase CLI, ni Docker, ni credenciales del proyecto, asi que la migracion no se ha podido aplicar ni se ha podido ejecutar `npm run test:security`.
+- Siguiente paso: aplicar `202608270003_add_movement_origin.sql` a `Marcos_Tienda` (SQL Editor del panel o `supabase db push`), comprobar que los tickets existentes quedan con `origin = 'purchase'` y que los saldos no cambian, y ejecutar las pruebas pgTAP donde haya Docker.
 - Dependencias: probar primero el MVP actual y conocer aproximadamente cuantos clientes/deudas pendientes tiene Marcos cuando vaya a empezar a utilizar la aplicacion.
 - Requisitos futuros: el movimiento debe quedar identificado como `Saldo inicial / deuda anterior a La Libreta`, registrar cliente, importe, fecha de migracion, usuario, nota opcional y origen `saldo inicial`. No se inventan tickets individuales por cada compra antigua de papel: se registra un unico movimiento de saldo inicial por cliente.
 - Integridad: importe en centimos enteros, `amount > 0`, RLS por tienda, sin borrado fisico normal y anulacion con trazabilidad.

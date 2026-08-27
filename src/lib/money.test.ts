@@ -6,6 +6,7 @@ import {
   canRegisterPayment,
   formatCents,
   needsHighTicketConfirmation,
+  openingBalanceConfirmation,
   parseEuroToCents,
   recentClients,
   searchClients,
@@ -121,6 +122,46 @@ describe('money helpers', () => {
     const balance = calculateActiveBalance([{ amount_cents: 1840, status: 'active' }], [{ amount_cents: 1840, voided_at: '2026-08-27T12:00:00Z' }])
     expect(balance).toBe(1840)
     expect(canChargeClient(balance)).toBe(true)
+  })
+
+  it('suma el saldo anterior a la deuda como cualquier movimiento activo', () => {
+    const sobreCero = calculateActiveBalance([{ amount_cents: 8640, status: 'active' }], [])
+    expect(sobreCero).toBe(8640)
+
+    const sobreDeudaExistente = calculateActiveBalance([
+      { amount_cents: 1200, status: 'active' },
+      { amount_cents: 8640, status: 'active' },
+    ], [])
+    expect(sobreDeudaExistente).toBe(9840)
+  })
+
+  it('descuenta el saldo anterior del total cuando se anula', () => {
+    const trasAnular = calculateActiveBalance([
+      { amount_cents: 1200, status: 'active' },
+      { amount_cents: 8640, status: 'voided' },
+    ], [])
+    expect(trasAnular).toBe(1200)
+    expect(canChargeClient(trasAnular)).toBe(true)
+  })
+
+  it('un pago sobre saldo anterior lo reduce igual que sobre una compra', () => {
+    expect(calculateActiveBalance(
+      [{ amount_cents: 8640, status: 'active' }],
+      [{ amount_cents: 2000, voided_at: null }],
+    )).toBe(6640)
+  })
+
+  it('confirma el saldo anterior nombrando importe y cliente', () => {
+    const mensaje = openingBalanceConfirmation('Pedrito', 8640)
+    expect(mensaje).toContain('86,40')
+    expect(mensaje).toContain('Pedrito')
+    expect(mensaje).toContain('ya debía anteriormente')
+    expect(mensaje).not.toContain('importe alto')
+  })
+
+  it('reutiliza el aviso de importe alto en la misma confirmacion', () => {
+    expect(openingBalanceConfirmation('Pedrito', 20000)).not.toContain('importe alto')
+    expect(openingBalanceConfirmation('Pedrito', 20001)).toContain('importe alto')
   })
 
   it('requires confirmation only above the high ticket threshold', () => {

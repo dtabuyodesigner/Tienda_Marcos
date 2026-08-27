@@ -10,6 +10,8 @@ El objetivo del MVP es sustituir la libreta de fiados, no el TPV ni el inventari
 
 Tickets y pagos usan `BIGINT amount_cents`, nunca float. Sus operaciones económicas no se borran: se anulan conservando autor, fecha y motivo.
 
+`tickets.origin` distingue el tipo de movimiento de deuda: `purchase` es una compra real de mostrador y `opening_balance` es la deuda que el cliente ya tenia antes de usar La Libreta. Ambos suman igual al saldo, pero nunca se confunden: el origen es inmutable por trigger, un saldo anterior no admite foto de ticket y un indice unico parcial impide que un cliente tenga dos saldos anteriores vivos a la vez.
+
 `clients` admite `nickname` y `note` como campos opcionales de ayuda operativa. El apodo participa en busqueda; la nota se muestra en la ficha sin intervenir en calculos economicos.
 
 ## UX Y Orden

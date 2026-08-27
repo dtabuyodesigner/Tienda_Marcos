@@ -25,6 +25,19 @@
 - Tickets y pagos se anulan con trazabilidad; no se borran como operacion normal.
 - Los importes anormalmente altos requieren confirmacion con umbral configurable en codigo.
 
+## Saldo Anterior A La Libreta
+
+- Marcos llega con deuda ya anotada en tickets de papel. Esa deuda entra como un unico movimiento por cliente, no como compras inventadas: no sabemos que compro ni cuando, y fabricar tickets falsos ensuciaria el historial para siempre.
+- Modelo elegido: conservar el modelo economico actual y anadir `tickets.origin` (`purchase` | `opening_balance`) mediante la migracion versionada `202608270003_add_movement_origin.sql`.
+- Por que no una tabla nueva: una tabla aparte obligaria a duplicar RLS, FKs compuestas, triggers de anulacion, indices y el calculo de saldo en dos sitios. El saldo anterior se comporta exactamente igual que un ticket (aumenta deuda, se anula con trazabilidad, se paga con los mismos pagos), asi que su unica diferencia real es semantica y se resuelve con una columna de origen.
+- Por que no simularlo en frontend: el origen tiene que ser un dato verificable en base de datos. Un `concept` con el texto `Saldo anterior` seria una convencion que cualquiera puede romper y que no permite validar nada.
+- Por que no una compra normal: una compra normal es una operacion de un dia concreto y puede llevar foto de ticket. El saldo anterior es deuda agregada sin fecha de compra real, por eso lleva su propio constraint que le prohibe foto y en la interfaz se titula `Saldo anterior` con la fecha etiquetada como registro, no como compra.
+- Un cliente solo puede tener un saldo anterior vivo. Lo garantiza un indice unico parcial, no solo la interfaz: duplicar deuda por un doble envio es el error caro. Para corregir un importe se anula y se registra el correcto.
+- El origen no se puede reescribir despues de crear el movimiento: trigger propio `protect_ticket_origin`, separado del compartido porque `payments` no tiene esa columna.
+- La anulacion reutiliza la trazabilidad existente: quien anulo, cuando y por que, y el importe deja de contar en el saldo.
+- `Añadir saldo anterior` es una accion secundaria de puesta en marcha. No compite con `+ Nueva compra` ni con `Cobrar`, y desaparece de la ficha cuando el cliente ya tiene un saldo anterior vivo.
+- La aplicacion comprueba al cargar si el esquema ya tiene la columna `origin`. Si la migracion aun no esta aplicada, la accion no se ofrece en lugar de fallar al guardar. Asi el despliegue del frontend y la aplicacion de la migracion pueden ir en cualquier orden sin romper produccion.
+
 ## Seguridad
 
 - El frontend no contiene service role key ni secretos.
