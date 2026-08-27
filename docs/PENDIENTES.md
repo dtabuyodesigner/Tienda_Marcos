@@ -80,6 +80,52 @@ Sin bloqueos documentados ahora mismo.
 - Estado: pendiente.
 - Dependencias: observar si el listado real crece lo suficiente.
 
+### Avisos de cuentas pendientes por antiguedad
+
+- Descripcion: avisar a Marcos dentro de la aplicacion cuando una cuenta lleve pendiente mas de un numero determinado de dias. Umbral inicial propuesto: 7 dias, disenado desde el principio para ser configurable despues (7/15/30 o valor personalizado).
+- Utilidad: en una tienda pequena, saber que tres cuentas llevan mas de una semana sin moverse vale mas que cualquier grafica. Es el aviso que convierte la libreta en algo que trabaja para Marcos en vez de limitarse a registrar.
+- Prioridad: P1.
+- Estado: pendiente, no implementado.
+- Dependencias: diseno del calculo de antiguedad y prueba real con Marcos.
+
+#### Presentacion objetivo
+
+- Primera version: aviso dentro de la aplicacion, en Inicio y en la ficha del cliente. Nada de contacto automatico.
+- En Inicio, resumen de una linea sobre el total pendiente que ya se muestra. Forma buscada:
+  - `Pendiente total: 483,20 € · 7 clientes`
+  - `⚠ 3 cuentas llevan más de 7 días pendientes`
+- Al abrir el aviso, listar cliente, importe pendiente y antiguedad.
+- En la ficha del cliente, marca discreta de antiguedad junto al saldo. Jerarquia secundaria: no debe competir con `+ Nueva compra` ni `Cobrar`.
+- Enlaza con `Resumen/PDF de cuenta`: el mismo calculo de antiguedad deberia alimentar ambos.
+
+#### Calculo de antiguedad
+
+Es la parte delicada del pendiente y hay que resolverla antes de escribir interfaz.
+
+- La antiguedad es la de la deuda que sigue viva, no la del ultimo movimiento. Una compra nueva no debe rejuvenecer una deuda anterior que sigue sin pagarse.
+- Metodo propuesto: imputar los pagos a la deuda mas antigua primero (FIFO). La antiguedad de la cuenta es la del movimiento de deuda mas antiguo que aun no ha quedado cubierto por pagos.
+  - Ejemplo: compra del 27/07 de 20,00 EUR, compra del 25/08 de 10,00 EUR y un pago de 15,00 EUR. El pago cubre 15,00 de la compra del 27/07, que sigue viva con 5,00 EUR. La cuenta tiene la antiguedad del 27/07, no la del 25/08.
+- Solo entran movimientos activos: tickets anulados y pagos anulados quedan fuera del calculo. Anular un pago debe recalcular la imputacion desde cero, no parchear el resultado anterior.
+- Si el saldo del cliente es cero, no hay antiguedad que mostrar.
+- Definir "dia" con cuidado: dias naturales completos en la zona horaria de la tienda (`Europe/Madrid`), para que `7 dias` signifique lo mismo a las 9:00 que a las 23:00.
+- El calculo debe vivir en una funcion pura y con tests, al estilo de `calculateActiveBalance`. `loadDashboard` ya trae tickets activos y pagos no anulados de la tienda, asi que la primera version no deberia necesitar consultas nuevas.
+
+#### Tratamiento de `opening_balance`
+
+- Problema: la fecha de registro de un saldo anterior es el dia en que Marcos lo apunto, no el dia en que nacio la deuda. Tratarlo por `created_at` haria que una deuda de meses apareciese como recien nacida, que es justo el error que este aviso debe evitar.
+- Regla minima innegociable: un saldo anterior nunca puede considerarse mas nuevo que su fecha de registro. Por definicion la deuda ya existia antes.
+- Opciones a valorar:
+  1. Anadir un campo opcional de fecha de origen al registrar el saldo anterior (`deuda desde`), con migracion versionada. Es la solucion correcta: Marcos suele saber aproximadamente desde cuando arrastra la deuda.
+  2. Sin ese dato, usar la fecha de registro como cota inferior y presentarlo como `pendiente desde al menos X dias`, sin afirmar una antiguedad exacta que no conocemos.
+  3. Descartada: excluir los saldos anteriores del aviso. Son precisamente las deudas mas viejas y dejarlas fuera vaciaria de sentido la funcionalidad.
+- Recomendacion: implementar la opcion 2 primero, porque no necesita cambios de esquema, y evaluar la opcion 1 con Marcos cuando se vea si recuerda las fechas reales.
+
+#### Limites explicitos
+
+- No contactar automaticamente al cliente en ninguna forma.
+- No enviar WhatsApp, SMS ni email sin una funcionalidad futura explicita, disenada aparte y siempre disparada por Marcos, nunca automatica.
+- Notificacion push o resumen diario al movil de Marcos: solo a estudiar despues de que el aviso dentro de la aplicacion se haya probado en uso real.
+
 ### Compartir cuenta por WhatsApp
 
 - Descripcion: permitir compartir un resumen legible de la cuenta del cliente.
@@ -95,6 +141,7 @@ Sin bloqueos documentados ahora mismo.
 - Prioridad: P1.
 - Estado: pendiente.
 - Dependencias: estabilizar primero la vista de cuenta.
+- Relacion: comparte calculo con `Avisos de cuentas pendientes por antiguedad`. La antiguedad de la deuda deberia resolverse una sola vez y alimentar el aviso de Inicio y el resumen.
 
 ### Mejoras que salgan de la prueba real de Marcos
 
