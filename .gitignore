@@ -6,3 +6,4 @@ dist/
 .supabase/
 supabase/.temp/
 *.local
+.vercel/

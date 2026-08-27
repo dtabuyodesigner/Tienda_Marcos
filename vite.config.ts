@@ -14,7 +14,10 @@ export default defineConfig({
         theme_color: '#002446',
         background_color: '#faf9f5',
         display: 'standalone',
-        icons: [],
+        icons: [
+          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        ],
       },
     }),
   ],
