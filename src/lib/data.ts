@@ -43,14 +43,19 @@ function latestActivityAt(clientId: string, tickets: Ticket[], payments: Payment
   return dates.sort((a, b) => b.localeCompare(a))[0] ?? null
 }
 
-async function currentStore(user: User): Promise<string> {
-  const { data, error } = await supabase.from('profiles').select('store_id').eq('id', user.id).single()
+async function currentProfile(user: User): Promise<{ store_id: string; display_name: string | null }> {
+  const { data, error } = await supabase.from('profiles').select('store_id, display_name').eq('id', user.id).single()
   if (error) throw error
-  return data.store_id
+  return data
 }
 
-export async function loadDashboard(user: User): Promise<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean }> {
-  const storeId = await currentStore(user)
+async function currentStore(user: User): Promise<string> {
+  return (await currentProfile(user)).store_id
+}
+
+export async function loadDashboard(user: User): Promise<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean; displayName: string | null }> {
+  const profile = await currentProfile(user)
+  const storeId = profile.store_id
   const [{ data: clients, error: clientsError }, { data: tickets, error: ticketsError }, { data: payments, error: paymentsError }, originProbe] = await Promise.all([
     supabase.from('clients').select('*').eq('store_id', storeId).eq('active', true).order('name'),
     supabase.from('tickets').select('*').eq('store_id', storeId).eq('status', 'active'),
@@ -65,6 +70,7 @@ export async function loadDashboard(user: User): Promise<{ clients: ClientSummar
     clients: summaries,
     total: summaries.reduce((sum, client) => sum + Math.max(client.balance, 0), 0),
     supportsOpeningBalance: !originProbe.error,
+    displayName: profile.display_name,
   }
 }
 

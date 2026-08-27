@@ -18,11 +18,23 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .error { color: #93000a; margin: 0; font: 14px/20px system-ui, sans-serif; }
 .app-shell { min-height: 100vh; }
 .topbar, .content { width: min(100%, 660px); margin: 0 auto; padding: 20px; }
-.topbar { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e3e2df; gap: 12px; }
-.brand-button { min-height: 44px; flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; padding: 0; text-align: left; color: #1b1c1a; background: transparent; }
+.topbar { display: grid; gap: 5px; border-bottom: 1px solid #e3e2df; }
+.topbar-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand-button { min-height: 44px; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; padding: 0; text-align: left; color: #1b1c1a; background: transparent; }
 .brand-button .eyebrow { margin: 0; }
-.brand-place { color: #43474e; font: 500 13px/18px system-ui, sans-serif; overflow-wrap: anywhere; }
-.top-actions { display: flex; align-items: center; gap: 12px; }
+.brand-place { display: block; color: #43474e; font: 500 13px/18px system-ui, sans-serif; overflow-wrap: anywhere; }
+.user-menu { position: relative; flex: 0 0 auto; }
+.user-trigger { display: flex; align-items: center; gap: 8px; min-height: 44px; max-width: 46vw; padding: 6px 10px; border: 1px solid #d6d8d0; border-radius: 999px; background: #f8f9f6; color: #002446; font: 600 15px/20px system-ui, sans-serif; }
+.user-trigger[aria-expanded="true"] { border-color: #426087; background: #eef2ff; }
+.user-avatar { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; background: #d3e3ff; color: #002446; font: 700 15px system-ui, sans-serif; }
+.user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-caret { flex: 0 0 auto; font-size: 12px; }
+.user-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: grid; min-width: 200px; padding: 6px; background: #fff; border: 1px solid #d6d8d0; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,36,70,.16); }
+.user-option { min-height: 48px; padding: 12px 14px; border-radius: 8px; text-align: left; background: transparent; color: #002446; font: 600 16px/24px system-ui, sans-serif; }
+.user-option:hover, .user-option:focus-visible { background: #eef2ff; }
+/* `Cerrar sesión` se separa para que no se pulse por inercia. */
+.user-option-danger { margin-top: 6px; padding-top: 14px; border-top: 1px solid #e3e2df; border-radius: 0 0 8px 8px; color: #93000a; }
+.user-option-danger:hover, .user-option-danger:focus-visible { background: #ffdad6; }
 .text-button, .link-button, .back { min-height: 44px; padding: 8px 0; color: #002446; background: transparent; }
 .forgot-link { justify-self: start; min-height: 40px; text-align: left; }
 .hero { display: grid; gap: 20px; padding: 24px; margin-bottom: 28px; background: #e9f0e9; border-radius: 12px; }
@@ -71,5 +83,6 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .photo-button { min-height: 52px; display: grid; place-items: center; padding: 12px 16px; border-radius: 8px; background: #2c694e; color: #fff; font: 600 16px/24px system-ui, sans-serif; }
 .photo-preview { display: grid; gap: 8px; color: #43474e; font: 14px/20px system-ui, sans-serif; }
 .photo-preview img { width: 100%; max-height: 220px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid #e3e2df; }
-@media (max-width: 480px) { .section-heading, .actions { align-items: stretch; flex-direction: column; } .brand-place { font-size: 12px; line-height: 17px; } .secondary-actions { display: grid; grid-template-columns: 1fr 1fr; } .subtle-action { width: 100%; } .small-action { width: 100%; } .topbar { align-items: flex-start; } .top-actions { gap: 8px; } }
+@media (max-width: 480px) { .section-heading, .actions { align-items: stretch; flex-direction: column; } .brand-place { font-size: 12px; line-height: 17px; } .secondary-actions { display: grid; grid-template-columns: 1fr 1fr; } .subtle-action { width: 100%; } .small-action { width: 100%; } }
+@media (max-width: 380px) { .user-name { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } .user-trigger { padding: 6px 8px; } }
 @media (min-width: 600px) { .topbar, .content { padding-left: 28px; padding-right: 28px; } .hero { grid-template-columns: 1fr auto; align-items: center; } }

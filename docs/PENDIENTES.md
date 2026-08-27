@@ -126,6 +126,15 @@ Es la parte delicada del pendiente y hay que resolverla antes de escribir interf
 - No enviar WhatsApp, SMS ni email sin una funcionalidad futura explicita, disenada aparte y siempre disparada por Marcos, nunca automatica.
 - Notificacion push o resumen diario al movil de Marcos: solo a estudiar despues de que el aviso dentro de la aplicacion se haya probado en uso real.
 
+### Seccion Ayuda
+
+- Descripcion: pantalla de ayuda breve para Marcos, con lo minimo para desatascarse solo: como apuntar una compra, como cobrar, como corregir un error y que significa `Saldo anterior`.
+- Utilidad: reduce la dependencia de preguntar cada vez que aparece una duda.
+- Prioridad: P1.
+- Estado: pendiente, no implementada.
+- Sitio ya reservado: entrara en el menu del control de usuario de la cabecera, entre `Cuenta` y `Cerrar sesión`. No se ha anadido la entrada mientras no exista la pantalla, para no dejar un enlace muerto.
+- Dependencias: saber que dudas aparecen de verdad en la prueba real con Marcos, en vez de escribir ayuda imaginaria.
+
 ### Compartir cuenta por WhatsApp
 
 - Descripcion: permitir compartir un resumen legible de la cuenta del cliente.

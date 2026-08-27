@@ -63,7 +63,7 @@ async function openFicha(name: string) {
 }
 
 beforeEach(() => {
-  vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 0)], total: 1840, supportsOpeningBalance: true })
+  vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 0)], total: 1840, supportsOpeningBalance: true, displayName: 'Marcos' })
 })
 
 afterEach(() => {
@@ -138,7 +138,8 @@ describe('nuevo cliente desde la ficha', () => {
 describe('pantalla Cuenta', () => {
   async function openCuenta() {
     render(<Workspace user={user} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Cuenta' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcos' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cuenta' }))
     return screen.findByRole('heading', { name: 'Cuenta' })
   }
 
@@ -250,7 +251,7 @@ describe('saldo anterior desde la ficha', () => {
   })
 
   it('no ofrece la accion si el esquema todavia no soporta el origen', async () => {
-    vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 0)], total: 0, supportsOpeningBalance: false })
+    vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 0)], total: 0, supportsOpeningBalance: false, displayName: 'Marcos' })
     pedrito(0)
     render(<Workspace user={user} />)
     await openFicha('Ana')
@@ -392,5 +393,103 @@ describe('historial con saldo anterior', () => {
 
     expect((await screen.findByRole('button', { name: /^Cobrar/ })).textContent).toContain('12,00')
     expect(screen.getByRole('button', { name: 'Añadir saldo anterior' })).toBeTruthy()
+  })
+})
+
+describe('control de usuario de la cabecera', () => {
+  async function abrirMenu() {
+    render(<Workspace user={user} />)
+    const trigger = await screen.findByRole('button', { name: 'Marcos' })
+    fireEvent.click(trigger)
+    return trigger
+  }
+
+  it('sustituye los enlaces sueltos por un unico control con el nombre del perfil', async () => {
+    render(<Workspace user={user} />)
+
+    const trigger = await screen.findByRole('button', { name: 'Marcos' })
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('button', { name: 'Salir' })).toBeNull()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('cae al usuario del email si el perfil no tiene display_name', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue({ clients: [], total: 0, supportsOpeningBalance: true, displayName: null })
+    render(<Workspace user={user} />)
+
+    expect(await screen.findByRole('button', { name: 'marcos' })).toBeTruthy()
+  })
+
+  it('abre y cierra el menu desde el propio control', async () => {
+    const trigger = await abrirMenu()
+
+    expect(await screen.findByRole('menu')).toBeTruthy()
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('menuitem', { name: 'Cuenta' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Cerrar sesión' })).toBeTruthy()
+
+    fireEvent.click(trigger)
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('no ofrece Ayuda mientras la seccion no exista', async () => {
+    await abrirMenu()
+
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: /Ayuda/ })).toBeNull()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(2)
+  })
+
+  it('lleva a Cuenta y cierra el menu al elegir', async () => {
+    await abrirMenu()
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cuenta' }))
+
+    expect(await screen.findByRole('heading', { name: 'Cuenta' })).toBeTruthy()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('cierra sesion con el logout existente y cierra el menu', async () => {
+    await abrirMenu()
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }))
+
+    expect(auth.signOut).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
+  it('cierra al pulsar fuera', async () => {
+    await abrirMenu()
+    await screen.findByRole('menu')
+
+    fireEvent.mouseDown(document.body)
+
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
+  it('cierra con Escape y devuelve el foco al control', async () => {
+    const trigger = await abrirMenu()
+    await screen.findByRole('menu')
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('es navegable por teclado dentro del menu', async () => {
+    await abrirMenu()
+    const menu = await screen.findByRole('menu')
+    const [cuenta, salir] = screen.getAllByRole('menuitem')
+
+    expect(document.activeElement).toBe(cuenta)
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(salir)
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(cuenta)
+    fireEvent.keyDown(menu, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(salir)
   })
 })

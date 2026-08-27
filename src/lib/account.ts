@@ -11,3 +11,18 @@ export function passwordProblem(password: string, repeated: string): string | nu
   if (password !== repeated) return 'Las contraseñas no coinciden.'
   return null
 }
+
+/**
+ * Nombre para el control de usuario de la cabecera.
+ * Prefiere `profiles.display_name`; si no existe, cae al usuario del email.
+ */
+export function accountDisplayName(displayName: string | null | undefined, email: string | null | undefined): string {
+  const nombre = displayName?.trim()
+  if (nombre) return nombre
+  const local = email?.split('@')[0]?.trim()
+  return local || 'Mi cuenta'
+}
+
+export function accountInitial(name: string): string {
+  return (name.trim().charAt(0) || '?').toLocaleUpperCase('es-ES')
+}

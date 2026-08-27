@@ -73,6 +73,17 @@
 - Los estados vacios usan lenguaje natural.
 - Los errores de carga/guardado evitan mostrar falso exito.
 
+## Navegacion Y Cabecera
+
+- La cabecera se lee en dos lineas: `LA LIBRETA DE MARCOS` con el control de usuario a su derecha, y debajo `Covirán · San Miguel de las Dueñas · El Bierzo · León` a lo ancho. La ubicacion puede envolver sin estrechar el control.
+- `Cuenta` y `Salir` dejan de ser dos enlaces sueltos. Motivo: `Salir` tenia demasiado protagonismo para ser la accion menos frecuente y mas destructiva de la aplicacion, y dos enlaces de texto hacian que la cabecera pareciese una pagina web en vez de la aplicacion de Marcos.
+- En su lugar hay un unico control de usuario arriba a la derecha: avatar con la inicial, nombre y flecha. Abre un menu con `Cuenta` y `Cerrar sesión`.
+- `Cerrar sesión` va separado visualmente del resto de opciones para que no se pulse por inercia, y usa exactamente el logout existente de Supabase Auth. Esta decision es de navegacion, no de Auth.
+- El nombre sale de `profiles.display_name`, que ya se lee al cargar el panel, sin consultas nuevas. Si no hay nombre se usa el usuario del email y, en ultimo caso, `Mi cuenta`.
+- El menu es propio, sin libreria: son dos opciones. Cumple `aria-haspopup`, `aria-expanded`, `role="menu"` y `role="menuitem"`, lleva el foco a la primera opcion al abrir, se recorre con flechas, y se cierra al elegir, al pulsar fuera y con Escape devolviendo el foco al control.
+- En pantallas de menos de 380px el nombre se oculta visualmente y queda avatar mas flecha, pero el texto sigue en el arbol de accesibilidad para no dejar un boton sin nombre.
+- `Ayuda` ira en este menu, entre `Cuenta` y `Cerrar sesión`, cuando la seccion exista. No se ha anadido ahora para no dejar un enlace muerto.
+
 ## Fotos
 
 - La foto del ticket es opcional.

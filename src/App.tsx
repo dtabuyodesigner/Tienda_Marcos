@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import {
@@ -30,7 +30,7 @@ import {
   searchClients,
   sortClientsForHome,
 } from './lib/money'
-import { MIN_PASSWORD_LENGTH, passwordProblem } from './lib/account'
+import { accountDisplayName, accountInitial, MIN_PASSWORD_LENGTH, passwordProblem } from './lib/account'
 
 type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings'
 type Notice = { tone: 'success' | 'error'; title?: string; message: string }
@@ -132,6 +132,7 @@ export function Workspace({ user }: { user: User }) {
   const [refreshing, setRefreshing] = useState(true)
   const [newClientOrigin, setNewClientOrigin] = useState<'home' | 'client'>('home')
   const [supportsOpeningBalance, setSupportsOpeningBalance] = useState(false)
+  const [displayName, setDisplayName] = useState<string | null>(null)
 
   async function refresh(options: { keepNotice?: boolean } = {}) {
     setRefreshing(true)
@@ -140,6 +141,7 @@ export function Workspace({ user }: { user: User }) {
       setClients(dashboard.clients)
       setTotal(dashboard.total)
       setSupportsOpeningBalance(dashboard.supportsOpeningBalance)
+      setDisplayName(dashboard.displayName)
       if (!options.keepNotice) setNotice(null)
     } catch {
       setNotice({ tone: 'error', message: 'No se pudieron cargar los datos. Comprueba la conexión y vuelve a intentarlo.' })
@@ -203,7 +205,67 @@ export function Workspace({ user }: { user: User }) {
   }
 
   if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
-  return <main className="app-shell"><header className="topbar"><button className="brand-button" onClick={() => setView('home')}><span className="eyebrow">La Libreta de Marcos</span><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></button><div className="top-actions"><button className="text-button" onClick={() => setView('settings')}>Cuenta</button><button className="text-button" onClick={() => void supabase.auth.signOut()}>Salir</button></div></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => setView('choose-client')} />}{view === 'new-client' && <NewClient user={user} allowContinue={newClientOrigin !== 'client'} onBack={() => setView(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); void refresh({ keepNotice: Boolean(notice) }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => setView('home')} onClient={(client) => { setSelectedClient(client); setView('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => setView('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} onBack={() => setView('home')} onBuy={() => setView('purchase')} onCharge={() => setView('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => setView('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} onHistory={() => setView('history')} onAccount={() => setView('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} onBack={() => setView('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => setView('client')} onChanged={() => { void refresh({ keepNotice: Boolean(notice) }); setView('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => setView('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => setView('home')} />}</div></main>
+  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => setView('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onAccount={() => setView('settings')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => setView('choose-client')} />}{view === 'new-client' && <NewClient user={user} allowContinue={newClientOrigin !== 'client'} onBack={() => setView(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase) => { setSelectedClient(client); void refresh({ keepNotice: Boolean(notice) }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} onBack={() => setView('home')} onClient={(client) => { setSelectedClient(client); setView('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} onBack={() => setView('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} onBack={() => setView('home')} onBuy={() => setView('purchase')} onCharge={() => setView('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => setView('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} onHistory={() => setView('history')} onAccount={() => setView('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} onBack={() => setView('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => setView('client')} onChanged={() => { void refresh({ keepNotice: Boolean(notice) }); setView('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => setView('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} onBack={() => setView('client')} onTicket={(ticket) => { setSelectedTicket(ticket); setView('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => setView('home')} />}</div></main>
+}
+
+/**
+ * Control unico de usuario de la cabecera. Sustituye a los enlaces sueltos
+ * `Cuenta` y `Salir`, que daban demasiado protagonismo al cierre de sesion.
+ * Menu propio en lugar de libreria: son dos opciones.
+ */
+function UserMenu({ name, onAccount, onSignOut }: { name: string; onAccount: () => void; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function closeOnOutside(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') { setOpen(false); triggerRef.current?.focus() }
+    }
+    document.addEventListener('mousedown', closeOnOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  // Al abrir se lleva el foco a la primera opcion: es lo que espera un menu con role="menu".
+  useEffect(() => {
+    if (open) panelRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+  }, [open])
+
+  function moveFocus(event: React.KeyboardEvent) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    const items = Array.from(panelRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])
+    if (items.length === 0) return
+    event.preventDefault()
+    const current = items.indexOf(document.activeElement as HTMLButtonElement)
+    const next = event.key === 'ArrowDown' ? current + 1 : current - 1
+    items[(next + items.length) % items.length].focus()
+  }
+
+  function choose(action: () => void) {
+    setOpen(false)
+    action()
+  }
+
+  return <div className="user-menu" ref={containerRef}>
+    <button ref={triggerRef} type="button" className="user-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <span className="user-avatar" aria-hidden="true">{accountInitial(name)}</span>
+      <span className="user-name">{name}</span>
+      <span className="user-caret" aria-hidden="true">▾</span>
+    </button>
+    {open && <div ref={panelRef} className="user-panel" role="menu" aria-label="Opciones de usuario" onKeyDown={moveFocus}>
+      <button type="button" role="menuitem" className="user-option" onClick={() => choose(onAccount)}>Cuenta</button>
+      <button type="button" role="menuitem" className="user-option user-option-danger" onClick={() => choose(onSignOut)}>Cerrar sesión</button>
+    </div>}
+  </div>
 }
 
 function Home({ clients, total, busy, onClient, onNew, onBuy }: { clients: ClientSummary[]; total: number; busy: boolean; onClient: (client: ClientSummary) => void; onNew: () => void; onBuy: () => void }) {
