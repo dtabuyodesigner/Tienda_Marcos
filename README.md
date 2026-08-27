@@ -84,3 +84,4 @@ Antes de desplegar, ejecutar tests, TypeScript y build. Las URLs de redireccion 
 - `docs/CHANGELOG.md`: cambios por fase.
 - `docs/PENDIENTES.md`: inventario vivo P0/P1/P2/fuera de alcance.
 - `docs/PIN_NEXT.md`: siguiente mejora documentada, no implementada.
+
