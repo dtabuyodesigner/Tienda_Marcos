@@ -26,7 +26,7 @@ La fila completa del cliente es pulsable. La ficha concentra acciones principale
 
 Las claves únicas `(store_id, id)` permiten FKs compuestas `(store_id, client_id)`. Así, un ticket con la tienda A y un cliente de B es rechazado por PostgreSQL aunque se envíe manualmente desde otro cliente. Triggers reutilizables actualizan `updated_at` y protegen campos de pertenencia/autoria.
 
-El trigger de alta de Auth crea una tienda nueva para cada usuario nuevo. La asignación de personal a una tienda existente se hará posteriormente mediante un flujo administrativo servidor-side; nunca se acepta `store_id` arbitrario desde metadata de registro.
+El trigger de alta de Auth exige un codigo de invitacion valido, lo consume y solo entonces crea una tienda nueva para cada usuario nuevo, con rol `owner`. Todo ocurre en la misma transaccion que el alta, asi que o se crea usuario, tienda y perfil, o no se crea nada. La asignación de personal a una tienda existente se hará posteriormente mediante un flujo administrativo servidor-side; nunca se acepta `store_id` arbitrario desde metadata de registro.
 
 ## Fotos
 

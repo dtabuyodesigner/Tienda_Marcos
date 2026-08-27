@@ -2,21 +2,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { User } from '@supabase/supabase-js'
-import { SUCCESS_NOTICE_MS, Workspace } from './App'
+import { Login, SUCCESS_NOTICE_MS, Workspace } from './App'
 import type { Client, ClientSummary } from './lib/data'
 import { attachClientPhoto, createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard, removeClientPhoto } from './lib/data'
 import type { Ticket } from './lib/data'
 
-const { auth } = vi.hoisted(() => ({
+const { auth, rpc } = vi.hoisted(() => ({
   auth: {
     signOut: vi.fn(),
     signInWithPassword: vi.fn(),
+    signUp: vi.fn(),
     updateUser: vi.fn(),
     resetPasswordForEmail: vi.fn(),
   },
+  rpc: vi.fn(),
 }))
 
-vi.mock('./lib/supabase', () => ({ supabase: { auth } }))
+vi.mock('./lib/supabase', () => ({ supabase: { auth, rpc } }))
 vi.mock('./lib/data', async (importOriginal) => ({
   ...await importOriginal<typeof import('./lib/data')>(),
   loadDashboard: vi.fn(),
@@ -441,12 +443,33 @@ describe('control de usuario de la cabecera', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('no ofrece Ayuda mientras la seccion no exista', async () => {
+  it('ofrece Ayuda entre Cuenta y Cerrar sesión', async () => {
     await abrirMenu()
 
     await screen.findByRole('menu')
-    expect(screen.queryByRole('menuitem', { name: /Ayuda/ })).toBeNull()
-    expect(screen.getAllByRole('menuitem')).toHaveLength(2)
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Cuenta', 'Ayuda', 'Cerrar sesión'])
+  })
+
+  it('abre la Ayuda desde el menu y se puede volver', async () => {
+    await abrirMenu()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Ayuda' }))
+
+    expect(await screen.findByRole('heading', { name: 'Ayuda' })).toBeTruthy()
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByText(/Pedrito me paga solo 20/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '← Volver' }))
+    expect(await screen.findByRole('heading', { name: 'Clientes' })).toBeTruthy()
+  })
+
+  it('Cuenta y Cerrar sesión siguen funcionando con Ayuda en medio', async () => {
+    await abrirMenu()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cuenta' }))
+    expect(await screen.findByRole('heading', { name: 'Cuenta' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Marcos' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cerrar sesión' }))
+    expect(auth.signOut).toHaveBeenCalledTimes(1)
   })
 
   it('lleva a Cuenta y cierra el menu al elegir', async () => {
@@ -489,9 +512,11 @@ describe('control de usuario de la cabecera', () => {
   it('es navegable por teclado dentro del menu', async () => {
     await abrirMenu()
     const menu = await screen.findByRole('menu')
-    const [cuenta, salir] = screen.getAllByRole('menuitem')
+    const [cuenta, ayuda, salir] = screen.getAllByRole('menuitem')
 
     expect(document.activeElement).toBe(cuenta)
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(ayuda)
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
     expect(document.activeElement).toBe(salir)
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
@@ -798,5 +823,175 @@ describe('resumen de la ficha', () => {
 
     const resumen = (await screen.findByRole('heading', { name: 'Resumen' })).closest('section')!
     expect(resumen.textContent).not.toContain('Deuda actual')
+  })
+})
+
+describe('alta de cuenta con invitacion', () => {
+  async function abrirAlta() {
+    render(<Login />)
+    fireEvent.click(screen.getByRole('button', { name: 'Crear mi cuenta' }))
+    return screen.findByRole('heading', { name: 'Crear mi cuenta' })
+  }
+
+  async function rellenar(codigo = 'ABCD1234EF56') {
+    fireEvent.change(screen.getByLabelText('Tu nombre'), { target: { value: 'Marcos' } })
+    fireEvent.change(screen.getByLabelText('Nombre de la tienda'), { target: { value: 'Covirán San Miguel' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'marcos@tienda.es' } })
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'libreta2026' } })
+    fireEvent.change(screen.getByLabelText('Repetir contraseña'), { target: { value: 'libreta2026' } })
+    fireEvent.change(screen.getByLabelText('Código de invitación'), { target: { value: codigo } })
+  }
+
+  function enviar() {
+    fireEvent.submit(screen.getByLabelText('Tu nombre').closest('form')!)
+  }
+
+  it('la pantalla de acceso ofrece crear cuenta sin perder login ni recuperacion', () => {
+    render(<Login />)
+
+    expect(screen.getByRole('button', { name: 'Crear mi cuenta' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Iniciar sesión' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '¿Has olvidado tu contraseña?' })).toBeTruthy()
+  })
+
+  it('el formulario pide invitacion y no trae ningun codigo dentro', async () => {
+    await abrirAlta()
+
+    const codigo = screen.getByLabelText('Código de invitación') as HTMLInputElement
+    expect(codigo.value).toBe('')
+    expect(screen.getByText(/necesitas un código de invitación/i)).toBeTruthy()
+  })
+
+  it('no envia nada si las contraseñas no coinciden', async () => {
+    await abrirAlta()
+    await rellenar()
+    fireEvent.change(screen.getByLabelText('Repetir contraseña'), { target: { value: 'otra2026' } })
+    enviar()
+
+    expect((await screen.findByRole('alert')).textContent).toContain('no coinciden')
+    expect(auth.signUp).not.toHaveBeenCalled()
+  })
+
+  it('no envia nada sin codigo de invitacion', async () => {
+    await abrirAlta()
+    await rellenar('')
+    enviar()
+
+    expect((await screen.findByRole('alert')).textContent).toContain('código de invitación')
+    expect(auth.signUp).not.toHaveBeenCalled()
+  })
+
+  it('rechaza un codigo que la base de datos dice que no vale', async () => {
+    rpc.mockResolvedValue({ data: false, error: null })
+    await abrirAlta()
+    await rellenar()
+    enviar()
+
+    expect((await screen.findByRole('alert')).textContent).toContain('no es válido o ya se ha usado')
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('invite_is_available', { code: 'ABCD1234EF56' }))
+    expect(auth.signUp).not.toHaveBeenCalled()
+  })
+
+  it('crea la cuenta enviando nombre, tienda y codigo como metadatos', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+    auth.signUp.mockResolvedValue({ data: { user: { id: 'u1', identities: [{ id: 'i1' }] }, session: { access_token: 't' } }, error: null })
+    await abrirAlta()
+    await rellenar()
+    enviar()
+
+    await waitFor(() => expect(auth.signUp).toHaveBeenCalledTimes(1))
+    expect(auth.signUp).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'marcos@tienda.es',
+      options: expect.objectContaining({ data: { display_name: 'Marcos', store_name: 'Covirán San Miguel', invite_code: 'ABCD1234EF56' } }),
+    }))
+  })
+
+  it('si Auth exige confirmar el email lo dice en vez de fingir que ya entra', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+    auth.signUp.mockResolvedValue({ data: { user: { id: 'u1', identities: [{ id: 'i1' }] }, session: null }, error: null })
+    await abrirAlta()
+    await rellenar()
+    enviar()
+
+    expect(await screen.findByRole('heading', { name: '✓ Cuenta creada' })).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('confirmar tu email')
+  })
+
+  it('avisa si el email ya tiene cuenta', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+    auth.signUp.mockResolvedValue({ data: { user: { id: 'u1', identities: [] }, session: null }, error: null })
+    await abrirAlta()
+    await rellenar()
+    enviar()
+
+    expect((await screen.findByRole('alert')).textContent).toContain('ya tiene cuenta')
+  })
+
+  it('traduce el fallo del alta en base de datos apuntando al codigo ya usado', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+    auth.signUp.mockResolvedValue({ data: { user: null, session: null }, error: { message: 'Database error saving new user' } })
+    await abrirAlta()
+    await rellenar()
+    enviar()
+
+    const aviso = await screen.findByRole('alert')
+    expect(aviso.textContent).toContain('código de invitación')
+    expect(aviso.textContent).not.toContain('Database error')
+  })
+
+  it('sigue adelante si la comprobacion previa del codigo falla: decide la base de datos', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'function does not exist' } })
+    auth.signUp.mockResolvedValue({ data: { user: { id: 'u1', identities: [{ id: 'i1' }] }, session: { access_token: 't' } }, error: null })
+    await abrirAlta()
+    await rellenar()
+    enviar()
+
+    await waitFor(() => expect(auth.signUp).toHaveBeenCalledTimes(1))
+  })
+
+  it('protege frente a doble submit', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
+    auth.signUp.mockReturnValue(new Promise(() => {}))
+    await abrirAlta()
+    await rellenar()
+    enviar()
+    enviar()
+    enviar()
+
+    await waitFor(() => expect(auth.signUp).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('ayudas contextuales', () => {
+  it('explica que la foto del ticket es opcional al apuntar una compra', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: '+ Nueva compra' }))
+
+    expect(await screen.findByText(/Opcional. Sirve por si luego hay dudas/)).toBeTruthy()
+  })
+
+  it('explica que anular no borra al abrir un movimiento', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840, [ticket({ id: 't-1', amount_cents: 1840 })]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: /Compra/ }))
+
+    expect(await screen.findByText(/Anular no borra el movimiento/)).toBeTruthy()
+  })
+
+  it('mantiene la explicacion del saldo anterior y la de la contraseña', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 0), 0))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: 'Añadir saldo anterior' }))
+    expect(await screen.findByText(/ya debía antes de empezar a usar La Libreta/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '← Volver' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcos' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cuenta' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cambiar contraseña' }))
+    expect(await screen.findByText(/confirma tu contraseña actual/)).toBeTruthy()
   })
 })

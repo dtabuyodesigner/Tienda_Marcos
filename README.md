@@ -2,7 +2,7 @@
 
 PWA mobile-first para llevar compras fiadas de una tienda pequena: clientes, compras, pagos, fotos opcionales de ticket y trazabilidad de anulaciones.
 
-Estado actual: P1 de migracion de saldos iniciales cerrado y validado en `2b15faa475ee81a3cc30fd8d196faef52a5b7a2a`. Las migraciones `202608270001`, `202608270002` y `202608270003` estan aplicadas en `Marcos_Tienda`. La aplicacion esta desplegada y en prueba manual real.
+Estado actual: registro controlado por invitacion y ayuda integrada en marcha. Las migraciones `202608270001` a `202608270005` estan aplicadas en `Marcos_Tienda`. La aplicacion esta desplegada y en prueba manual real.
 
 ## Requisitos
 
@@ -22,6 +22,9 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 
 ## Flujo operativo
 
+- Alta de cuenta desde la pantalla de acceso, solo con codigo de invitacion. Crea tienda y perfil automaticamente. Ver `docs/SECURITY.md` para emitir una invitacion.
+- Auth exige confirmar el email antes de la primera entrada. Para entregarla a una tienda real hay que configurar SMTP propio en Supabase y permitir el dominio publico en las URLs de redireccion.
+- `Ayuda` dentro de la aplicacion, en el menu de usuario.
 - Login mediante Supabase Auth.
 - Inicio con total pendiente, clientes ordenados por deuda primero y actividad reciente como criterio secundario.
 - Alta de cliente con nombre, telefono opcional, apodo/referencia opcional y nota corta opcional.
@@ -50,6 +53,7 @@ Las migraciones versionadas estan en `supabase/migrations/`.
 - `202608270002_add_client_reference_fields.sql`: apodo/referencia y nota corta de cliente.
 - `202608270003_add_movement_origin.sql`: origen del movimiento (`purchase` / `opening_balance`) para el saldo anterior a La Libreta.
 - `202608270004_add_client_photo.sql`: referencia opcional a la foto del cliente en Storage privado.
+- `202608270005_add_store_invites.sql`: invitaciones de un solo uso y alta de cuenta solo con invitacion.
 
 El dinero se guarda siempre como centimos enteros (`amount_cents`). El saldo no se duplica: se calcula como tickets activos menos pagos no anulados.
 

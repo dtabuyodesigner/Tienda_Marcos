@@ -33,10 +33,11 @@ import {
   searchClients,
   sortClientsForHome,
 } from './lib/money'
-import { accountDisplayName, accountInitial, MIN_PASSWORD_LENGTH, passwordProblem } from './lib/account'
+import { accountDisplayName, accountInitial, MIN_PASSWORD_LENGTH, passwordProblem, signUpMessage } from './lib/account'
+import { Help } from './Help'
 import { summarizeClientMovements } from './lib/summary'
 
-type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings'
+type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings' | 'help'
 type Notice = { tone: 'success' | 'error'; title?: string; message: string }
 /** Los avisos de exito son efimeros: un ✓ viejo puede leerse como la accion recien hecha. */
 export const SUCCESS_NOTICE_MS = 6000
@@ -62,12 +63,13 @@ export function App() {
   return session ? <Workspace user={session.user} /> : <Login />
 }
 
-function Login() {
+export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [forgotPassword, setForgotPassword] = useState(false)
+  const [creatingAccount, setCreatingAccount] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -80,7 +82,8 @@ function Login() {
   }
 
   if (forgotPassword) return <ForgotPassword initialEmail={email} onBack={() => setForgotPassword(false)} />
-  return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Tu tienda, en orden.</h1><p className="muted">Accede para gestionar tus compras fiadas.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Entrando...' : 'Iniciar sesión'}</button><button type="button" className="text-button forgot-link" onClick={() => setForgotPassword(true)}>¿Has olvidado tu contraseña?</button></form></section></main>
+  if (creatingAccount) return <SignUp onBack={() => setCreatingAccount(false)} />
+  return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Tu tienda, en orden.</h1><p className="muted">Accede para gestionar tus compras fiadas.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Entrando...' : 'Iniciar sesión'}</button><button type="button" className="text-button forgot-link" onClick={() => setForgotPassword(true)}>¿Has olvidado tu contraseña?</button></form><div className="login-alt"><span className="muted">¿Todavía no tienes cuenta?</span><button type="button" className="secondary-action subtle-action" onClick={() => setCreatingAccount(true)}>Crear mi cuenta</button></div></section></main>
 }
 
 function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
@@ -106,6 +109,60 @@ function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
 
 function ForgotPassword({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
   return <main className="shell"><section className="panel login"><button className="back" onClick={onBack}>← Volver</button><p className="eyebrow">La Libreta de Marcos</p><h1>Recuperar contraseña</h1><ForgotPasswordForm initialEmail={initialEmail} /></section></main>
+}
+
+/**
+ * Alta de cuenta. El registro no es publico: hace falta un codigo de invitacion.
+ * La comprobacion previa del codigo es solo para dar un mensaje util; quien
+ * autoriza de verdad es el alta en base de datos, que consume la invitacion en
+ * la misma transaccion que crea el usuario.
+ */
+function SignUp({ onBack }: { onBack: () => void }) {
+  const [name, setName] = useState('')
+  const [storeName, setStoreName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [repeatedPassword, setRepeatedPassword] = useState('')
+  const [invite, setInvite] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [confirmEmail, setConfirmEmail] = useState(false)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    if (!name.trim() || !storeName.trim()) { setError('Pon tu nombre y el nombre de la tienda.'); return }
+    if (!invite.trim()) { setError('Necesitas un código de invitación para crear la cuenta.'); return }
+    const problem = passwordProblem(password, repeatedPassword)
+    if (problem) { setError(problem); return }
+    setBusy(true)
+    setError('')
+    const { data: available, error: checkError } = await supabase.rpc('invite_is_available', { code: invite.trim() })
+    if (!checkError && available === false) {
+      setError('Ese código de invitación no es válido o ya se ha usado.')
+      setBusy(false)
+      return
+    }
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/`, data: { display_name: name.trim(), store_name: storeName.trim(), invite_code: invite.trim() } },
+    })
+    if (signUpError) { setError(signUpMessage(signUpError.message)); setBusy(false); return }
+    // Sin identidades: Supabase oculta que el email ya existe para no filtrarlo.
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setError('Ese email ya tiene cuenta. Inicia sesión o recupera la contraseña.')
+      setBusy(false)
+      return
+    }
+    // Con sesion se entra directo; sin ella, Auth pide confirmar el correo.
+    if (!data.session) setConfirmEmail(true)
+    setBusy(false)
+  }
+
+  if (confirmEmail) return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>✓ Cuenta creada</h1><p className="notice success" role="status">Te hemos enviado un enlace para confirmar tu email. Ábrelo desde este móvil y ya podrás entrar.</p><button type="button" className="secondary-action" onClick={onBack}>Volver a iniciar sesión</button></section></main>
+
+  return <main className="shell"><section className="panel login"><button className="back" onClick={onBack}>← Volver</button><p className="eyebrow">La Libreta de Marcos</p><h1>Crear mi cuenta</h1><p className="muted">La Libreta todavía es privada: necesitas un código de invitación.</p><form onSubmit={submit}><label>Tu nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Nombre de la tienda<input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Covirán San Miguel" required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><label>Repetir contraseña<input type="password" autoComplete="new-password" value={repeatedPassword} onChange={(event) => setRepeatedPassword(event.target.value)} required /></label><label>Código de invitación<input value={invite} onChange={(event) => setInvite(event.target.value)} autoCapitalize="characters" spellCheck={false} required /></label><p className="muted">Al menos {MIN_PASSWORD_LENGTH} caracteres, con letras y números.</p>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Creando cuenta...' : 'Crear mi cuenta'}</button></form></section></main>
 }
 
 function ResetPassword({ onDone }: { onDone: () => void }) {
@@ -243,7 +300,7 @@ export function Workspace({ user }: { user: User }) {
   }
 
   if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
-  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onAccount={() => go('settings')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} photoUrls={photoUrls} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} canAddPhoto={supportsClientPhoto} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase, photoFailed) => { setSelectedClient(client); setNotice(photoFailed ? { tone: 'error', title: `${client.name} creado, pero la foto no se guardó`, message: 'Puedes añadirla desde su ficha.' } : { tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} photoUrls={photoUrls} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} canManagePhoto={supportsClientPhoto} photoUrl={photoUrls[selectedClient.id]} onPhotoChanged={finishPhotoChange} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => go('home')} />}</div></main>
+  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onAccount={() => go('settings')} onHelp={() => go('help')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} photoUrls={photoUrls} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} canAddPhoto={supportsClientPhoto} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase, photoFailed) => { setSelectedClient(client); setNotice(photoFailed ? { tone: 'error', title: `${client.name} creado, pero la foto no se guardó`, message: 'Puedes añadirla desde su ficha.' } : { tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} photoUrls={photoUrls} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} canManagePhoto={supportsClientPhoto} photoUrl={photoUrls[selectedClient.id]} onPhotoChanged={finishPhotoChange} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => go('home')} />}{view === 'help' && <Help onBack={() => go('home')} />}</div></main>
 }
 
 /**
@@ -251,7 +308,7 @@ export function Workspace({ user }: { user: User }) {
  * `Cuenta` y `Salir`, que daban demasiado protagonismo al cierre de sesion.
  * Menu propio en lugar de libreria: son dos opciones.
  */
-function UserMenu({ name, onAccount, onSignOut }: { name: string; onAccount: () => void; onSignOut: () => void }) {
+function UserMenu({ name, onAccount, onHelp, onSignOut }: { name: string; onAccount: () => void; onHelp: () => void; onSignOut: () => void }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -300,7 +357,7 @@ function UserMenu({ name, onAccount, onSignOut }: { name: string; onAccount: () 
       <span className="user-caret" aria-hidden="true">▾</span>
     </button>
     {open && <div ref={panelRef} className="user-panel" role="menu" aria-label="Opciones de usuario" onKeyDown={moveFocus}>
-      <button type="button" role="menuitem" className="user-option" onClick={() => choose(onAccount)}>Cuenta</button>
+      <button type="button" role="menuitem" className="user-option" onClick={() => choose(onAccount)}>Cuenta</button><button type="button" role="menuitem" className="user-option" onClick={() => choose(onHelp)}>Ayuda</button>
       <button type="button" role="menuitem" className="user-option user-option-danger" onClick={() => choose(onSignOut)}>Cerrar sesión</button>
     </div>}
   </div>
@@ -424,7 +481,7 @@ function Purchase({ user, client, photoUrl, onBack, onSaved }: { user: User; cli
     }
   }
 
-  return <FormPage title="Nueva compra" onBack={onBack}><div className="selected"><Avatar name={client.name} photoUrl={photoUrl} /><strong>{client.name}</strong></div><form onSubmit={submit}><label>Importe<input inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} required disabled={Boolean(existingTicket)} /></label><label>Concepto <span className="muted">(opcional)</span><input value={concept} onChange={(event) => setConcept(event.target.value)} disabled={Boolean(existingTicket)} /></label><div className="photo-input"><span className="label">Foto del ticket <span className="muted">(opcional)</span></span><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /><label className="photo-button" htmlFor={photoInputId}>Hacer foto del ticket</label>{photo && <button type="button" className="text-button" onClick={() => setPhoto(null)}>Quitar foto</button>}</div>{photo && <div className="photo-preview"><img src={previewUrl} alt="Vista previa de la foto del ticket" /><span>{photo.name}</span></div>}{error && <p className="error">{error}</p>}{existingTicket ? <button type="button" disabled={busy || !photo} onClick={() => void retryPhoto()}>{busy ? 'Reintentando...' : 'Reintentar foto'}</button> : <button disabled={busy}>{busy ? 'Guardando...' : 'Guardar compra'}</button>}</form></FormPage>
+  return <FormPage title="Nueva compra" onBack={onBack}><div className="selected"><Avatar name={client.name} photoUrl={photoUrl} /><strong>{client.name}</strong></div><form onSubmit={submit}><label>Importe<input inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} required disabled={Boolean(existingTicket)} /></label><label>Concepto <span className="muted">(opcional)</span><input value={concept} onChange={(event) => setConcept(event.target.value)} disabled={Boolean(existingTicket)} /></label><div className="photo-input"><span className="label">Foto del ticket <span className="muted">(opcional)</span></span><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /><label className="photo-button" htmlFor={photoInputId}>Hacer foto del ticket</label><span className="field-hint">Opcional. Sirve por si luego hay dudas de qué se llevó.</span>{photo && <button type="button" className="text-button" onClick={() => setPhoto(null)}>Quitar foto</button>}</div>{photo && <div className="photo-preview"><img src={previewUrl} alt="Vista previa de la foto del ticket" /><span>{photo.name}</span></div>}{error && <p className="error">{error}</p>}{existingTicket ? <button type="button" disabled={busy || !photo} onClick={() => void retryPhoto()}>{busy ? 'Reintentando...' : 'Reintentar foto'}</button> : <button disabled={busy}>{busy ? 'Guardando...' : 'Guardar compra'}</button>}</form></FormPage>
 }
 
 function ClientPage({ user, client, canAddOpeningBalance, canManagePhoto, photoUrl, onBack, onBuy, onCharge, onNewClient, onOpeningBalance, onPhotoChanged, onTicket, onHistory, onAccount }: { user: User; client: Client | ClientSummary; canAddOpeningBalance: boolean; canManagePhoto: boolean; photoUrl?: string; onBack: () => void; onBuy: () => void; onCharge: () => void; onNewClient: () => void; onOpeningBalance: () => void; onPhotoChanged: (updated: Client) => void | Promise<void>; onTicket: (ticket: Ticket) => void; onHistory: () => void; onAccount: () => void }) {
@@ -533,7 +590,7 @@ function TicketPage({ user, ticket, onBack, onChanged }: { user: User; ticket: T
     }
   }
 
-  return <FormPage title={isOpeningBalance(ticket) ? 'Detalle del saldo anterior' : 'Detalle del ticket'} onBack={onBack}><div className="detail"><span className="label">{isOpeningBalance(ticket) ? 'Saldo anterior' : 'Compra'} · {formatDateTime(ticket.created_at)} · {ticket.status === 'voided' ? 'Anulado' : 'Activo'}</span><strong>{formatCents(ticket.amount_cents)}</strong><p>{ticket.concept || (isOpeningBalance(ticket) ? 'Deuda anterior a La Libreta' : 'Sin concepto')}</p>{photoUrl && <img className="ticket-photo" src={photoUrl} alt="Foto del ticket" />}</div>{ticket.status === 'active' && <><label>Motivo de anulación<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Necesario para anular" /></label>{error && <p className="error">{error}</p>}<button className="danger-action" disabled={busy || !reason.trim()} onClick={() => void cancel()}>{busy ? 'Anulando...' : 'Anular ticket'}</button></>}</FormPage>
+  return <FormPage title={isOpeningBalance(ticket) ? 'Detalle del saldo anterior' : 'Detalle del ticket'} onBack={onBack}><div className="detail"><span className="label">{isOpeningBalance(ticket) ? 'Saldo anterior' : 'Compra'} · {formatDateTime(ticket.created_at)} · {ticket.status === 'voided' ? 'Anulado' : 'Activo'}</span><strong>{formatCents(ticket.amount_cents)}</strong><p>{ticket.concept || (isOpeningBalance(ticket) ? 'Deuda anterior a La Libreta' : 'Sin concepto')}</p>{photoUrl && <img className="ticket-photo" src={photoUrl} alt="Foto del ticket" />}</div>{ticket.status === 'active' && <><label>Motivo de anulación<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Necesario para anular" /></label><p className="field-hint">Anular no borra el movimiento: queda en el historial y deja de contar en la deuda.</p>{error && <p className="error">{error}</p>}<button className="danger-action" disabled={busy || !reason.trim()} onClick={() => void cancel()}>{busy ? 'Anulando...' : 'Anular ticket'}</button></>}</FormPage>
 }
 
 function Charge({ user, client, onBack, onPaid }: { user: User; client: Client | ClientSummary; onBack: () => void; onPaid: (paidCents: number) => void | Promise<void> }) {

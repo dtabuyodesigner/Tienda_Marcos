@@ -85,6 +85,20 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .summary-grid dt { color: #43474e; font: 600 13px/18px system-ui, sans-serif; }
 .summary-grid dd { margin: 2px 0 0; color: #002446; font: 600 17px/22px system-ui, sans-serif; }
 .summary-note { margin: 14px 0 0; font: 13px/19px system-ui, sans-serif; }
+.login-alt { display: grid; gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #e3e2df; text-align: center; font: 15px/22px system-ui, sans-serif; }
+.help-intro { color: #43474e; font: 16px/24px system-ui, sans-serif; margin: 0 0 22px; }
+.help-section { margin: 26px 0 0; }
+.help-section h2 { font-size: 19px; margin-bottom: 10px; }
+.help-item { border: 1px solid #e3e2df; border-radius: 10px; background: rgba(255,255,255,.7); margin-bottom: 8px; }
+.help-item summary { min-height: 52px; display: flex; align-items: center; padding: 14px 16px; cursor: pointer; color: #002446; font: 600 16px/22px system-ui, sans-serif; }
+.help-item summary::marker { color: #2c694e; }
+.help-item[open] summary { border-bottom: 1px solid #e3e2df; }
+.help-answer { padding: 14px 16px; color: #1b1c1a; font: 16px/25px system-ui, sans-serif; }
+.help-answer p { margin: 0 0 10px; }
+.help-answer p:last-child { margin-bottom: 0; }
+.help-list, .help-steps { margin: 0 0 10px; padding-left: 22px; font: 16px/25px system-ui, sans-serif; }
+.help-list li, .help-steps li { margin-bottom: 6px; }
+.field-hint { display: block; margin: -6px 0 0; color: #43474e; font: 14px/20px system-ui, sans-serif; }
 .heading-action { flex: 0 0 auto; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }

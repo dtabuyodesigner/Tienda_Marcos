@@ -30,6 +30,20 @@ Sin bloqueos documentados ahora mismo.
 - Datos previos intactos: 9 tiendas, 13 clientes, 4 tickets y 1 pago antes y despues; los 4 tickets existentes quedaron con `origin = 'purchase'`; deuda total sin cambios en 9.700 centimos; `max(updated_at)` de tickets sin moverse.
 - Pendiente asociado: `npm run test:security` (pgTAP) no se ha podido ejecutar por falta de Docker en la maquina de trabajo. Las pruebas estan escritas y ampliadas a 13 asserts, pero no se dan por pasadas.
 
+### Onboarding / registro controlado
+
+- Estado: **RESUELTO / VALIDADO** el 27 de agosto de 2026 contra `Marcos_Tienda`, con una salvedad de entrega anotada abajo.
+- Incluye: `Crear mi cuenta` en la pantalla de acceso, alta con nombre, email, contrasena repetida, nombre de tienda y codigo de invitacion; creacion automatica de tienda y perfil con rol `owner`; y aislamiento entre tiendas intacto.
+- Registro no publico: hace falta invitacion de un solo uso, validada y consumida en base de datos. Migracion `202608270005_add_store_invites.sql` aplicada.
+- Validacion remota: 14 comprobaciones en verde y prueba por la API real de Auth, que rechaza el alta sin codigo y con codigo inventado.
+- **Pendiente operativo antes de entregar a Marcos**: `mailer_autoconfirm` esta a false, asi que Auth exige confirmar el email. Para que Marcos reciba ese correo hay que configurar SMTP propio en Supabase (el remitente por defecto tiene un limite muy bajo y no sirve para produccion) y anadir `https://marcos-tienda.vercel.app` a las URLs de redireccion permitidas. Son dos ajustes de panel, no de codigo, y no se han podido hacer desde aqui.
+
+### Ayuda integrada
+
+- Estado: **RESUELTO / VALIDADO**.
+- Incluye: pantalla `Ayuda` en el menu de usuario entre `Cuenta` y `Cerrar sesión`, con 14 preguntas reales de mostrador en bloques desplegables, y ayudas contextuales en saldo anterior, foto del ticket, anulacion y cambio de contrasena.
+- Es contenido estatico de la aplicacion: se lee sin pedir nada al servidor.
+
 ### Foto opcional del cliente
 
 - Estado: **RESUELTO / VALIDADO** el 27 de agosto de 2026 contra `Marcos_Tienda`.
@@ -140,15 +154,6 @@ Es la parte delicada del pendiente y hay que resolverla antes de escribir interf
 - No contactar automaticamente al cliente en ninguna forma.
 - No enviar WhatsApp, SMS ni email sin una funcionalidad futura explicita, disenada aparte y siempre disparada por Marcos, nunca automatica.
 - Notificacion push o resumen diario al movil de Marcos: solo a estudiar despues de que el aviso dentro de la aplicacion se haya probado en uso real.
-
-### Seccion Ayuda
-
-- Descripcion: pantalla de ayuda breve para Marcos, con lo minimo para desatascarse solo: como apuntar una compra, como cobrar, como corregir un error y que significa `Saldo anterior`.
-- Utilidad: reduce la dependencia de preguntar cada vez que aparece una duda.
-- Prioridad: P1.
-- Estado: pendiente, no implementada.
-- Sitio ya reservado: entrara en el menu del control de usuario de la cabecera, entre `Cuenta` y `Cerrar sesión`. No se ha anadido la entrada mientras no exista la pantalla, para no dejar un enlace muerto.
-- Dependencias: saber que dudas aparecen de verdad en la prueba real con Marcos, en vez de escribir ayuda imaginaria.
 
 ### Compartir cuenta por WhatsApp
 

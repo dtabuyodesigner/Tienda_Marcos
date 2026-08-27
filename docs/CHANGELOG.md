@@ -1,5 +1,28 @@
 # Changelog
 
+## Pendiente - P1 Onboarding controlado y Ayuda
+
+Base: `2d4d3c6ebcd63827efe256f58dcf6e8580fa47d9`.
+
+### Registro controlado
+
+- Migracion `202608270005_add_store_invites.sql`, aplicada en `Marcos_Tienda`: tabla `store_invites` con RLS y sin politicas, funciones `invite_code_hash`, `issue_store_invite` e `invite_is_available`, y nueva version de `handle_new_user` que consume la invitacion en la misma transaccion que crea el usuario.
+- `Crear mi cuenta` en la pantalla de acceso, sin perder login ni recuperacion de contrasena.
+- Alta con nombre, email, contrasena repetida, nombre de tienda y codigo. Crea tienda y perfil con rol `owner`.
+- Del codigo solo se guarda su hash. No hay ningun codigo en el frontend ni en el paquete publicado.
+- Confirmado contra el proyecto real que Auth exige verificar el email; la pantalla lo dice en vez de fingir que ya se entra.
+
+### Ayuda
+
+- Pantalla `Ayuda` en el menu de usuario, entre `Cuenta` y `Cerrar sesión`, con 14 preguntas de mostrador en bloques desplegables y sin jerga tecnica.
+- Es contenido estatico: se lee sin pedir nada al servidor.
+- Ayudas contextuales anadidas en foto del ticket y anulacion; las de saldo anterior y cambio de contrasena ya existian.
+
+### Validacion
+
+- 146 pruebas en verde.
+- Remoto: 14 comprobaciones de seguridad del registro y prueba por la API real de Auth.
+
 ## Pendiente - P1 Foto y resumen del cliente
 
 Base: `b521e4f7bd783187d60cf40ae3f923613a77ba63`.

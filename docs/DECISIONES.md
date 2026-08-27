@@ -86,6 +86,41 @@
 - En pantallas de menos de 380px el nombre se oculta visualmente y queda avatar mas flecha, pero el texto sigue en el arbol de accesibilidad para no dejar un boton sin nombre.
 - `Ayuda` ira en este menu, entre `Cuenta` y `Cerrar sesión`, cuando la seccion exista. No se ha anadido ahora para no dejar un enlace muerto.
 
+## Registro Controlado
+
+- El registro no es publico. La Libreta esta en fase privada para Marcos y pruebas: cualquiera que encuentre la URL no debe poder crearse una tienda. Hace falta un codigo de invitacion.
+- `disable_signup` esta a false en el proyecto, o sea que Auth acepta altas de quien las pida. Por eso la puerta no puede estar en la pantalla de registro.
+- **La frontera de seguridad es el trigger `handle_new_user`**, que ya creaba tienda y perfil al insertarse el usuario. Ahora ademas consume la invitacion, dentro de la MISMA transaccion que el alta de Auth. Si el codigo no vale, se lanza una excepcion y el usuario no llega a existir. Da igual que alguien llame a la API de Auth desde fuera de la aplicacion.
+- En React no hay ningun codigo, ninguna lista de codigos ni ninguna comparacion de la que dependa la seguridad. La comprobacion previa (`invite_is_available`) existe solo para dar un mensaje util antes de enviar el formulario; si esa llamada falla, el alta sigue adelante y decide la base de datos.
+- Modelo: tabla `store_invites` con RLS activa y **sin ninguna politica**, mas `revoke` a `public`, `anon` y `authenticated`. Nadie puede leer ni listar invitaciones; solo las funciones `security definer` las tocan. Comprobado contra el proyecto real: autenticado y anonimo reciben permiso denegado.
+- Del codigo solo se guarda su SHA-256. El valor en claro existe una vez, al emitirlo. SHA-256 sin sal es correcto aqui porque el secreto son 80 bits aleatorios, no una contrasena elegida por una persona: no hay diccionario posible y permite buscar por indice unico. Un KDF lento no aportaria nada y romperia la busqueda.
+- El codigo lo genera el servidor con `gen_random_bytes` (10 bytes, 20 caracteres hex). Se normaliza antes de hashear, asi que guiones, espacios y minusculas que teclee el usuario dan igual.
+- Uso unico y atomico: el consumo es un `update ... where used_count < max_uses`. Dos altas simultaneas con el mismo codigo se serializan en el bloqueo de fila y la segunda ya no encuentra usos libres. Un `check (used_count <= max_uses)` es la segunda linea.
+- Todas las funciones `security definer` llevan `set search_path = ''` y referencias cualificadas, para eliminar la clase entera de fallo por secuestro de search_path.
+- `invite_code_hash` devuelve NULL si el codigo normalizado no mide entre 20 y 64 caracteres. Sin esa guarda, cualquier cadena de solo signos (`---`) normalizaria a vacio y compartiria un hash fijo y conocido, que se convertiria en llave maestra si alguna vez se insertara esa fila. Falla cerrado por dos vias: NULL no casa con ningun hash y choca contra el `not null`.
+- `used_by` se borra en cascada a NULL. Poder borrar un usuario mal registrado es justo el caso que mas se va a necesitar, y la invitacion sigue marcada como usada por `used_count`.
+
+### Consecuencias operativas asumidas
+
+- **Toda alta de usuario pasa por el trigger**, tambien las hechas desde el panel de Supabase o con la API de administracion. Para dar de alta a alguien a mano hay que emitir un codigo y pasarlo en el metadata del usuario (`{"invite_code": "..."}`). Si algun dia se activa un login social, esta decision lo bloquea y habra que revisarla.
+- **La invitacion se consume al crear el usuario, antes de confirmar el email.** Si alguien se registra con el email mal escrito, el codigo queda gastado y hay que reciclarlo a mano. Mover el consumo a la confirmacion abriria una ventana de cuentas sin tienda, asi que se asume.
+- `max_uses` admite mas de un uso, pero `used_at` y `used_by` son singulares y se sobrescribirian. Mientras solo se emitan invitaciones de un uso, la traza es exacta.
+- No hay caducidad ni funcion de revocacion: revocar es un `update` manual sobre `revoked_at`. Deuda consciente.
+
+## Verificacion De Email
+
+- Comprobado contra el proyecto real, no supuesto: `mailer_autoconfirm` esta a **false**, asi que Auth exige confirmar el email antes de dar sesion.
+- La pantalla de alta no finge lo contrario: si Auth no devuelve sesion, muestra `✓ Cuenta creada` y explica que se ha enviado un enlace de confirmacion. Si algun dia se activara el autoconfirm, la misma pantalla entraria directa sin tocar codigo.
+- `emailRedirectTo` apunta al origen de la propia aplicacion, sin comodines.
+
+## Ayuda
+
+- La ayuda vive dentro de la aplicacion, no en una web aparte: es contenido estatico del propio paquete, asi que se puede leer aunque la conexion con el servidor falle, siempre que la aplicacion haya cargado. No hace ninguna peticion para mostrar texto.
+- Vive en el menu de usuario, entre `Cuenta` y `Cerrar sesión`, que es el sitio que ya se habia reservado al rehacer la cabecera.
+- Formato de preguntas y respuestas con bloques desplegables nativos del navegador, sin JavaScript de estado: menos que romperse.
+- El lenguaje es el del mostrador, con situaciones reales. Nada de jerga tecnica; hay una prueba automatica que falla si aparece.
+- Ayudas contextuales solo donde evitan una duda real: saldo anterior, foto del ticket, anulacion y cambio de contrasena. No se llenan las pantallas de iconos de interrogacion.
+
 ## Foto Del Cliente
 
 - La foto es opcional y solo sirve para que Marcos reconozca a la persona de un vistazo. No se usa para nada mas: sin reconocimiento facial, sin clasificacion, sin biometria, sin analisis de imagen.
