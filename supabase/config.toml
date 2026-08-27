@@ -1,0 +1,13 @@
+project_id = "libreta-marcos"
+
+[db]
+major_version = 15
+
+[storage]
+file_size_limit = "10MiB"
+
+[[storage.buckets]]
+name = "ticket-photos"
+public = false
+file_size_limit = "10MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
