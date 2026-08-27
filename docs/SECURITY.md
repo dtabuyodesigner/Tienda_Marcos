@@ -21,3 +21,28 @@ No hay escrituras economicas offline. Si falla la conexion o el guardado, la int
 ## Pruebas
 
 `supabase/tests/security.sql` usa pgTAP para comprobar los ocho escenarios mínimos de aislamiento e integridad. Se ejecuta con `npm run test:security` después de `supabase start`.
+
+## Registro Controlado
+
+El alta de cuentas exige un codigo de invitacion. La comprobacion no vive en el frontend: el trigger `handle_new_user` consume la invitacion en la misma transaccion que crea el usuario en Auth, asi que un alta sin codigo valido se deshace entera y no deja usuario.
+
+- Tabla `public.store_invites`: RLS activa y sin politicas, mas `revoke` a `public`, `anon` y `authenticated`. Nadie la lee desde la aplicacion.
+- Solo se guarda el SHA-256 del codigo normalizado. El codigo en claro se ve una vez, al emitirlo.
+- `issue_store_invite` genera el codigo en el servidor y no esta concedida a `anon` ni a `authenticated`: se emite desde el editor SQL.
+- `invite_is_available` es la unica funcion concedida a `anon`. Devuelve solo un booleano y sirve para el mensaje de error del formulario, no para autorizar.
+- Todas las funciones `security definer` usan `set search_path = ''` y referencias cualificadas.
+- Consumo de un solo uso y atomico mediante `update ... where used_count < max_uses`.
+
+Para dar de alta a alguien a mano hace falta emitir un codigo y pasarlo en el metadata del usuario:
+
+```sql
+select public.issue_store_invite('para quien es');  -- devuelve el codigo una sola vez
+-- luego, al crear el usuario: user_metadata = {"invite_code": "EL_CODIGO"}
+```
+
+Para revocar o reciclar una invitacion:
+
+```sql
+update public.store_invites set revoked_at = now() where id = '...';
+update public.store_invites set used_count = 0, used_at = null, used_by = null where id = '...';
+```
