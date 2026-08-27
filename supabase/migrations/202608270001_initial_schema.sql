@@ -114,13 +114,22 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
-create or replace function public.protect_ownership_fields()
+create or replace function public.protect_profile_fields()
 returns trigger language plpgsql security invoker set search_path = public
 as $$
 begin
-  if new.store_id is distinct from old.store_id
-     or (tg_table_name = 'profiles' and new.role is distinct from old.role)
-     or (tg_table_name in ('tickets', 'payments') and new.created_by is distinct from old.created_by) then
+  if new.store_id is distinct from old.store_id or new.role is distinct from old.role then
+    raise exception 'Los campos de pertenencia no se pueden modificar';
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.protect_movement_fields()
+returns trigger language plpgsql security invoker set search_path = public
+as $$
+begin
+  if new.store_id is distinct from old.store_id or new.created_by is distinct from old.created_by then
     raise exception 'Los campos de pertenencia no se pueden modificar';
   end if;
   return new;
@@ -128,11 +137,11 @@ end;
 $$;
 
 create trigger profiles_protect_ownership before update on public.profiles
-for each row execute function public.protect_ownership_fields();
+for each row execute function public.protect_profile_fields();
 create trigger tickets_protect_ownership before update on public.tickets
-for each row execute function public.protect_ownership_fields();
+for each row execute function public.protect_movement_fields();
 create trigger payments_protect_ownership before update on public.payments
-for each row execute function public.protect_ownership_fields();
+for each row execute function public.protect_movement_fields();
 
 -- Índices: listados por tienda, búsquedas de cliente y movimientos cronológicos.
 create index clients_store_id_idx on public.clients (store_id);
