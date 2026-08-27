@@ -15,6 +15,7 @@ import {
   loadDashboard,
   removeClientPhoto,
   signedPhotoUrl,
+  updateClientEmail,
   signedPhotoUrls,
   voidMovement,
   type Client,
@@ -36,8 +37,12 @@ import {
 import { accountDisplayName, accountInitial, MIN_PASSWORD_LENGTH, passwordProblem, signUpMessage } from './lib/account'
 import { Help } from './Help'
 import { summarizeClientMovements } from './lib/summary'
+import { computeAging, isOverdue, OVERDUE_THRESHOLD_DAYS } from './lib/aging'
+import { buildStoreOverview, type StoreOverview } from './lib/overview'
+import { buildAccountView } from './lib/account-view'
+import { emailProblem, normalizeEmail } from './lib/email'
 
-type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings' | 'help'
+type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings' | 'help' | 'overview'
 type Notice = { tone: 'success' | 'error'; title?: string; message: string }
 /** Los avisos de exito son efimeros: un ✓ viejo puede leerse como la accion recien hecha. */
 export const SUCCESS_NOTICE_MS = 6000
@@ -198,6 +203,7 @@ export function Workspace({ user }: { user: User }) {
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [supportsClientPhoto, setSupportsClientPhoto] = useState(false)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  const [movements, setMovements] = useState<{ tickets: Ticket[]; payments: Payment[] }>({ tickets: [], payments: [] })
 
   async function refresh(options: { keepNotice?: boolean } = {}) {
     setRefreshing(true)
@@ -208,6 +214,7 @@ export function Workspace({ user }: { user: User }) {
       setSupportsOpeningBalance(dashboard.supportsOpeningBalance)
       setSupportsClientPhoto(dashboard.supportsClientPhoto)
       setPhotoUrls(dashboard.photoUrls)
+      setMovements({ tickets: dashboard.tickets, payments: dashboard.payments })
       setDisplayName(dashboard.displayName)
       if (!options.keepNotice) setNotice(null)
     } catch {
@@ -284,9 +291,13 @@ export function Workspace({ user }: { user: User }) {
     }
   }
 
+  // La antiguedad y el resumen se derivan de los movimientos que el panel ya
+  // trajo en la misma carga: ni una consulta extra por cliente.
+  const now = new Date()
+  const overview = useMemo(() => buildStoreOverview(clients, movements.tickets, movements.payments, now), [clients, movements])
   // Se pide la signed URL de la foto nueva en el momento para que el avatar no
   // parpadee al inicial mientras llega el refresco del panel.
-  async function finishPhotoChange(updated: Client) {
+  async function finishClientChange(updated: Client) {
     setSelectedClient((current) => (current ? { ...current, ...updated } : updated))
     const fresh = updated.photo_path ? await signedPhotoUrls([updated.photo_path]) : {}
     setPhotoUrls((current) => {
@@ -300,7 +311,7 @@ export function Workspace({ user }: { user: User }) {
   }
 
   if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
-  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onAccount={() => go('settings')} onHelp={() => go('help')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} photoUrls={photoUrls} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} canAddPhoto={supportsClientPhoto} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase, photoFailed) => { setSelectedClient(client); setNotice(photoFailed ? { tone: 'error', title: `${client.name} creado, pero la foto no se guardó`, message: 'Puedes añadirla desde su ficha.' } : { tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} photoUrls={photoUrls} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} canManagePhoto={supportsClientPhoto} photoUrl={photoUrls[selectedClient.id]} onPhotoChanged={finishPhotoChange} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => go('home')} />}{view === 'help' && <Help onBack={() => go('home')} />}</div></main>
+  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><span className="eyebrow">La Libreta de Marcos</span></button><UserMenu name={accountDisplayName(displayName, user.email)} onOverview={() => go('overview')} onAccount={() => go('settings')} onHelp={() => go('help')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} photoUrls={photoUrls} overview={overview} onClientById={(id) => { const found = clients.find((client) => client.id === id); if (found) openClient(found) }} onOverview={() => go('overview')} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} canAddPhoto={supportsClientPhoto} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase, photoFailed) => { setSelectedClient(client); setNotice(photoFailed ? { tone: 'error', title: `${client.name} creado, pero la foto no se guardó`, message: 'Puedes añadirla desde su ficha.' } : { tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} photoUrls={photoUrls} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} canManagePhoto={supportsClientPhoto} photoUrl={photoUrls[selectedClient.id]} onClientChanged={finishClientChange} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => go('home')} />}{view === 'help' && <Help onBack={() => go('home')} />}{view === 'overview' && <Overview overview={overview} onBack={() => go('home')} onClient={(id) => { const found = clients.find((client) => client.id === id); if (found) openClient(found) }} />}</div></main>
 }
 
 /**
@@ -308,7 +319,7 @@ export function Workspace({ user }: { user: User }) {
  * `Cuenta` y `Salir`, que daban demasiado protagonismo al cierre de sesion.
  * Menu propio en lugar de libreria: son dos opciones.
  */
-function UserMenu({ name, onAccount, onHelp, onSignOut }: { name: string; onAccount: () => void; onHelp: () => void; onSignOut: () => void }) {
+function UserMenu({ name, onOverview, onAccount, onHelp, onSignOut }: { name: string; onOverview: () => void; onAccount: () => void; onHelp: () => void; onSignOut: () => void }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -357,16 +368,32 @@ function UserMenu({ name, onAccount, onHelp, onSignOut }: { name: string; onAcco
       <span className="user-caret" aria-hidden="true">▾</span>
     </button>
     {open && <div ref={panelRef} className="user-panel" role="menu" aria-label="Opciones de usuario" onKeyDown={moveFocus}>
-      <button type="button" role="menuitem" className="user-option" onClick={() => choose(onAccount)}>Cuenta</button><button type="button" role="menuitem" className="user-option" onClick={() => choose(onHelp)}>Ayuda</button>
+      <button type="button" role="menuitem" className="user-option" onClick={() => choose(onOverview)}>Resumen</button><button type="button" role="menuitem" className="user-option" onClick={() => choose(onAccount)}>Cuenta</button><button type="button" role="menuitem" className="user-option" onClick={() => choose(onHelp)}>Ayuda</button>
       <button type="button" role="menuitem" className="user-option user-option-danger" onClick={() => choose(onSignOut)}>Cerrar sesión</button>
     </div>}
   </div>
 }
 
-function Home({ clients, total, busy, photoUrls, onClient, onNew, onBuy }: { clients: ClientSummary[]; total: number; busy: boolean; photoUrls: Record<string, string>; onClient: (client: ClientSummary) => void; onNew: () => void; onBuy: () => void }) {
+/** Antiguedad en texto. El saldo anterior solo permite afirmar una cota inferior. */
+function ageLabel(days: number, approximate: boolean): string {
+  return `${approximate ? 'al menos ' : ''}${days} ${days === 1 ? 'día' : 'días'}`
+}
+
+function OverdueNotice({ overview, onClient, onAll }: { overview: StoreOverview; onClient: (clientId: string) => void; onAll: () => void }) {
+  // Sin cuentas antiguas no se muestra un bloque vacio.
+  if (overview.overdueCount === 0) return null
+  const visible = overview.overdueAccounts.slice(0, 3)
+  return <section className="overdue" aria-label="Cuentas pendientes desde hace tiempo"><h2>⚠ {overview.overdueCount === 1 ? 'Una cuenta lleva' : `${overview.overdueCount} cuentas llevan`} más de {OVERDUE_THRESHOLD_DAYS} días pendientes</h2><div className="overdue-list">{visible.map((account) => <button className="overdue-row" key={account.clientId} onClick={() => onClient(account.clientId)}><strong>{account.name}</strong><span>{formatCents(account.balanceCents)} · {ageLabel(account.ageInDays, account.approximate)}</span></button>)}</div>{overview.overdueCount > visible.length && <button type="button" className="text-button" onClick={onAll}>Ver todas</button>}</section>
+}
+
+function Overview({ overview, onBack, onClient }: { overview: StoreOverview; onBack: () => void; onClient: (clientId: string) => void }) {
+  return <FormPage title="Resumen" onBack={onBack}><section className="summary"><h2>Ahora mismo</h2><dl className="summary-grid"><div><dt>Pendiente total</dt><dd>{formatCents(overview.totalPendingCents)}</dd></div><div><dt>Clientes con deuda</dt><dd>{overview.clientsWithDebt}</dd></div><div><dt>Cuentas de más de {OVERDUE_THRESHOLD_DAYS} días</dt><dd>{overview.overdueCount}</dd></div><div><dt>Deuda de más de {OVERDUE_THRESHOLD_DAYS} días</dt><dd>{formatCents(overview.overdueCents)}</dd></div></dl><p className="muted summary-note">La deuda de más de {OVERDUE_THRESHOLD_DAYS} días cuenta solo la parte que lleva ese tiempo sin pagarse, no el saldo entero de esas cuentas.</p></section><section className="summary"><h2>Este mes</h2><dl className="summary-grid"><div><dt>Compras fiadas</dt><dd>{formatCents(overview.monthPurchaseCents)}</dd></div><div><dt>Número de compras</dt><dd>{overview.monthPurchaseCount}</dd></div><div><dt>Cobrado</dt><dd>{formatCents(overview.monthPaymentCents)}</dd></div><div><dt>Número de cobros</dt><dd>{overview.monthPaymentCount}</dd></div></dl><p className="muted summary-note">No cuentan movimientos anulados. Un saldo anterior no es una compra del mes aunque se apuntase este mes.</p></section>{overview.overdueAccounts.length > 0 && <><div className="section-heading"><h2>Cuentas más antiguas</h2></div><div className="overdue-list">{overview.overdueAccounts.slice(0, 5).map((account) => <button className="overdue-row" key={account.clientId} onClick={() => onClient(account.clientId)}><strong>{account.name}</strong><span>{formatCents(account.balanceCents)} · {ageLabel(account.ageInDays, account.approximate)}</span></button>)}</div></>}</FormPage>
+}
+
+function Home({ clients, total, busy, photoUrls, overview, onClient, onClientById, onOverview, onNew, onBuy }: { clients: ClientSummary[]; total: number; busy: boolean; photoUrls: Record<string, string>; overview: StoreOverview; onClient: (client: ClientSummary) => void; onClientById: (clientId: string) => void; onOverview: () => void; onNew: () => void; onBuy: () => void }) {
   const [query, setQuery] = useState('')
   const visible = searchClients(sortClientsForHome(clients), query)
-  return <><section className="hero"><div><span className="label">Pendiente de cobrar</span><strong>{formatCents(total)}</strong></div><button className="primary-action" onClick={onBuy}>+ Apuntar compra</button></section><div className="section-heading home-heading"><h2>Clientes</h2><button className="secondary-action small-action" onClick={onNew}>Nuevo cliente</button></div><input className="search" placeholder="Buscar por nombre o apodo" value={query} onChange={(event) => setQuery(event.target.value)} />{busy ? <p className="muted">Actualizando...</p> : <div className="client-list">{visible.map((client) => <ClientRow client={client} photoUrl={photoUrls[client.id]} key={client.id} onClick={() => onClient(client)} />)}{clients.length === 0 && <div className="empty"><strong>Todavía no tienes clientes.</strong><span>Crea el primero o apunta una compra.</span></div>}{clients.length > 0 && visible.length === 0 && <p className="empty">No hay clientes que coincidan.</p>}</div>}</>
+  return <><section className="hero"><div><span className="label">Pendiente de cobrar</span><strong>{formatCents(total)}</strong></div><button className="primary-action" onClick={onBuy}>+ Apuntar compra</button></section><OverdueNotice overview={overview} onClient={onClientById} onAll={onOverview} /><div className="section-heading home-heading"><h2>Clientes</h2><button className="secondary-action small-action" onClick={onNew}>Nuevo cliente</button></div><input className="search" placeholder="Buscar por nombre o apodo" value={query} onChange={(event) => setQuery(event.target.value)} />{busy ? <p className="muted">Actualizando...</p> : <div className="client-list">{visible.map((client) => <ClientRow client={client} photoUrl={photoUrls[client.id]} key={client.id} onClick={() => onClient(client)} />)}{clients.length === 0 && <div className="empty"><strong>Todavía no tienes clientes.</strong><span>Crea el primero o apunta una compra.</span></div>}{clients.length > 0 && visible.length === 0 && <p className="empty">No hay clientes que coincidan.</p>}</div>}</>
 }
 
 /**
@@ -395,16 +422,19 @@ function NewClient({ user, canAddPhoto, onBack, onCreated, allowContinue = true 
   const [error, setError] = useState('')
   const [continuePurchase, setContinuePurchase] = useState(false)
   const [photo, setPhoto] = useState<File | null>(null)
+  const [email, setEmail] = useState('')
   const photoInputId = useId()
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (busy) return
+    const emailIssue = emailProblem(email)
+    if (emailIssue) { setError(emailIssue); return }
     setBusy(true)
     setError('')
     let created: Client
     try {
-      created = await createClient(user, { name, phone, nickname, note })
+      created = await createClient(user, { name, phone, nickname, note, email: normalizeEmail(email) })
     } catch {
       setError('No se ha podido guardar. Comprueba la conexión y vuelve a intentarlo.')
       setBusy(false)
@@ -423,7 +453,7 @@ function NewClient({ user, canAddPhoto, onBack, onCreated, allowContinue = true 
     onCreated(created, allowContinue && continuePurchase, photoFailed)
   }
 
-  return <FormPage title="Nuevo cliente" onBack={onBack}><form onSubmit={submit}><label>Nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Apodo o referencia <span className="muted">(opcional)</span><input value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="Pepe el de la plaza" maxLength={80} /></label><label>Teléfono <span className="muted">(opcional)</span><input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label><label>Nota corta <span className="muted">(opcional)</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Madre de Lucía" maxLength={160} /></label>{canAddPhoto && <div className="photo-input"><span className="label">Foto del cliente <span className="muted">(opcional)</span></span><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /><label className="photo-button" htmlFor={photoInputId}>Hacer o elegir foto</label>{photo && <button type="button" className="text-button" onClick={() => setPhoto(null)}>Quitar foto</button>}</div>}{error && <p className="error">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : allowContinue && continuePurchase ? 'Crear y continuar' : 'Crear cliente'}</button>{allowContinue && <label className="check"><input type="checkbox" checked={continuePurchase} onChange={(event) => setContinuePurchase(event.target.checked)} /> Crear y continuar con una compra</label>}</form></FormPage>
+  return <FormPage title="Nuevo cliente" onBack={onBack}><form onSubmit={submit}><label>Nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Apodo o referencia <span className="muted">(opcional)</span><input value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="Pepe el de la plaza" maxLength={80} /></label><label>Teléfono <span className="muted">(opcional)</span><input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label><label>Email <span className="muted">(opcional)</span><input type="email" autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Para enviarle su cuenta más adelante" /></label><label>Nota corta <span className="muted">(opcional)</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Madre de Lucía" maxLength={160} /></label>{canAddPhoto && <div className="photo-input"><span className="label">Foto del cliente <span className="muted">(opcional)</span></span><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /><label className="photo-button" htmlFor={photoInputId}>Hacer o elegir foto</label>{photo && <button type="button" className="text-button" onClick={() => setPhoto(null)}>Quitar foto</button>}</div>}{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : allowContinue && continuePurchase ? 'Crear y continuar' : 'Crear cliente'}</button>{allowContinue && <label className="check"><input type="checkbox" checked={continuePurchase} onChange={(event) => setContinuePurchase(event.target.checked)} /> Crear y continuar con una compra</label>}</form></FormPage>
 }
 
 function ChooseClient({ clients, photoUrls, onBack, onClient, onNew }: { clients: ClientSummary[]; photoUrls: Record<string, string>; onBack: () => void; onClient: (client: ClientSummary) => void; onNew: () => void }) {
@@ -484,19 +514,40 @@ function Purchase({ user, client, photoUrl, onBack, onSaved }: { user: User; cli
   return <FormPage title="Nueva compra" onBack={onBack}><div className="selected"><Avatar name={client.name} photoUrl={photoUrl} /><strong>{client.name}</strong></div><form onSubmit={submit}><label>Importe<input inputMode="decimal" placeholder="0,00" value={amount} onChange={(event) => setAmount(event.target.value)} required disabled={Boolean(existingTicket)} /></label><label>Concepto <span className="muted">(opcional)</span><input value={concept} onChange={(event) => setConcept(event.target.value)} disabled={Boolean(existingTicket)} /></label><div className="photo-input"><span className="label">Foto del ticket <span className="muted">(opcional)</span></span><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} /><label className="photo-button" htmlFor={photoInputId}>Hacer foto del ticket</label><span className="field-hint">Opcional. Sirve por si luego hay dudas de qué se llevó.</span>{photo && <button type="button" className="text-button" onClick={() => setPhoto(null)}>Quitar foto</button>}</div>{photo && <div className="photo-preview"><img src={previewUrl} alt="Vista previa de la foto del ticket" /><span>{photo.name}</span></div>}{error && <p className="error">{error}</p>}{existingTicket ? <button type="button" disabled={busy || !photo} onClick={() => void retryPhoto()}>{busy ? 'Reintentando...' : 'Reintentar foto'}</button> : <button disabled={busy}>{busy ? 'Guardando...' : 'Guardar compra'}</button>}</form></FormPage>
 }
 
-function ClientPage({ user, client, canAddOpeningBalance, canManagePhoto, photoUrl, onBack, onBuy, onCharge, onNewClient, onOpeningBalance, onPhotoChanged, onTicket, onHistory, onAccount }: { user: User; client: Client | ClientSummary; canAddOpeningBalance: boolean; canManagePhoto: boolean; photoUrl?: string; onBack: () => void; onBuy: () => void; onCharge: () => void; onNewClient: () => void; onOpeningBalance: () => void; onPhotoChanged: (updated: Client) => void | Promise<void>; onTicket: (ticket: Ticket) => void; onHistory: () => void; onAccount: () => void }) {
+function ClientPage({ user, client, canAddOpeningBalance, canManagePhoto, photoUrl, onBack, onBuy, onCharge, onNewClient, onOpeningBalance, onClientChanged, onTicket, onHistory, onAccount }: { user: User; client: Client | ClientSummary; canAddOpeningBalance: boolean; canManagePhoto: boolean; photoUrl?: string; onBack: () => void; onBuy: () => void; onCharge: () => void; onNewClient: () => void; onOpeningBalance: () => void; onClientChanged: (updated: Client) => void | Promise<void>; onTicket: (ticket: Ticket) => void; onHistory: () => void; onAccount: () => void }) {
   const [data, setData] = useState<{ tickets: Ticket[]; payments: Payment[]; balance: number } | null>(null)
   const [error, setError] = useState('')
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoError, setPhotoError] = useState('')
   const photoInputId = useId()
+  const [editingEmail, setEditingEmail] = useState(false)
+  const [email, setEmail] = useState(client.email ?? '')
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailError, setEmailError] = useState('')
+
+  async function saveEmail(event: FormEvent) {
+    event.preventDefault()
+    if (emailBusy) return
+    const problem = emailProblem(email)
+    if (problem) { setEmailError(problem); return }
+    setEmailBusy(true)
+    setEmailError('')
+    try {
+      await onClientChanged(await updateClientEmail(user, client, normalizeEmail(email)))
+      setEditingEmail(false)
+    } catch {
+      setEmailError('No se pudo guardar el email. Vuelve a intentarlo.')
+    } finally {
+      setEmailBusy(false)
+    }
+  }
 
   async function replacePhoto(file: File | null) {
     if (!file || photoBusy) return
     setPhotoBusy(true)
     setPhotoError('')
     try {
-      await onPhotoChanged(await attachClientPhoto(user, client, file))
+      await onClientChanged(await attachClientPhoto(user, client, file))
     } catch {
       setPhotoError('No se pudo guardar la foto. Vuelve a intentarlo.')
     } finally {
@@ -509,7 +560,7 @@ function ClientPage({ user, client, canAddOpeningBalance, canManagePhoto, photoU
     setPhotoBusy(true)
     setPhotoError('')
     try {
-      await onPhotoChanged(await removeClientPhoto(user, client))
+      await onClientChanged(await removeClientPhoto(user, client))
     } catch {
       setPhotoError('No se pudo quitar la foto. Vuelve a intentarlo.')
     } finally {
@@ -521,7 +572,8 @@ function ClientPage({ user, client, canAddOpeningBalance, canManagePhoto, photoU
 
   const balance = data?.balance ?? ('balance' in client ? client.balance : 0)
   const stats = data ? summarizeClientMovements(data.tickets, data.payments) : null
-  return <FormPage title={client.name} onBack={onBack} leading={<Avatar name={client.name} photoUrl={photoUrl} large />} action={<button className="secondary-action subtle-action heading-action" onClick={onNewClient}>+ Crear otro cliente</button>}>{canManagePhoto && <div className="photo-controls"><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => void replacePhoto(event.target.files?.[0] ?? null)} /><label className="text-button photo-control" htmlFor={photoInputId}>{photoBusy ? 'Guardando foto...' : client.photo_path ? 'Cambiar foto' : 'Añadir foto'}</label>{client.photo_path && <button type="button" className="text-button photo-control" disabled={photoBusy} onClick={() => void dropPhoto()}>Quitar foto</button>}</div>}{photoError && <p className="error" role="alert">{photoError}</p>}<div className="balance-card"><span className="label">{balance > 0 ? 'Deuda actual' : 'Estado'}</span><strong>{balance > 0 ? formatCents(balance) : 'No debe nada'}</strong>{client.note && <p>{client.note}</p>}</div><div className="actions"><button className="primary-action" onClick={onBuy}>+ Nueva compra</button>{canChargeClient(balance) && <button className="secondary-action" onClick={onCharge}>Cobrar {formatCents(balance)}</button>}</div><div className="secondary-actions"><button className="secondary-action subtle-action" onClick={onHistory}>Ver historial</button><button className="secondary-action subtle-action" onClick={onAccount}>Ver cuenta</button>{canAddOpeningBalance && data && !hasActiveOpeningBalance(data.tickets) && <button className="secondary-action subtle-action" onClick={onOpeningBalance}>Añadir saldo anterior</button>}</div>{stats && <section className="summary"><h2>Resumen</h2><dl className="summary-grid"><div><dt>Movimientos de deuda activos</dt><dd>{stats.activeDebtMovements}</dd></div><div><dt>Última compra</dt><dd>{stats.lastPurchaseAt ? formatDateTime(stats.lastPurchaseAt) : '—'}</dd></div><div><dt>Último pago</dt><dd>{stats.lastPaymentAt ? formatDateTime(stats.lastPaymentAt) : 'Todavía no hay pagos'}</dd></div><div><dt>Total apuntado</dt><dd>{formatCents(stats.totalChargedActive)}</dd></div><div><dt>Total pagado</dt><dd>{formatCents(stats.totalPaidActive)}</dd></div><div><dt>Movimientos registrados</dt><dd>{stats.movementCount}</dd></div></dl><p className="muted summary-note">Los totales no cuentan movimientos anulados. El saldo anterior cuenta como apuntado. `Última compra` no incluye el saldo anterior.</p></section>}<div className="section-heading"><h2>Movimientos</h2></div>{error && <p className="error">{error}</p>}{data?.tickets.filter((ticket) => ticket.status === 'active').map((ticket) => <button className="movement" key={ticket.id} onClick={() => onTicket(ticket)}><span><b>{movementHeadline(ticket)}</b><small>{movementDetail(ticket)}</small></span><strong className="debt">+ {formatCents(ticket.amount_cents)}</strong></button>)}{data?.payments.filter((payment) => !payment.voided_at).map((payment) => <PaymentRow key={payment.id} user={user} payment={payment} onChanged={() => void loadClientHistory(user, client.id).then(setData)} />)}{data && data.tickets.length === 0 && data.payments.length === 0 && <p className="empty">Todavía no hay movimientos.</p>}{!data && <p className="muted">Cargando movimientos...</p>}</FormPage>
+  const aging = data ? computeAging(data.tickets, data.payments, new Date()) : null
+  return <FormPage title={client.name} onBack={onBack} leading={<Avatar name={client.name} photoUrl={photoUrl} large />} action={<button className="secondary-action subtle-action heading-action" onClick={onNewClient}>+ Crear otro cliente</button>}>{canManagePhoto && <div className="photo-controls"><input id={photoInputId} className="hidden-file" type="file" accept="image/*" capture="environment" onChange={(event) => void replacePhoto(event.target.files?.[0] ?? null)} /><label className="text-button photo-control" htmlFor={photoInputId}>{photoBusy ? 'Guardando foto...' : client.photo_path ? 'Cambiar foto' : 'Añadir foto'}</label>{client.photo_path && <button type="button" className="text-button photo-control" disabled={photoBusy} onClick={() => void dropPhoto()}>Quitar foto</button>}</div>}{photoError && <p className="error" role="alert">{photoError}</p>}{editingEmail ? <form className="email-edit" onSubmit={saveEmail}><label>Email del cliente <span className="muted">(opcional)</span><input type="email" autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="sin email" /></label>{emailError && <p className="error" role="alert">{emailError}</p>}<div className="email-actions"><button disabled={emailBusy}>{emailBusy ? 'Guardando...' : 'Guardar email'}</button><button type="button" className="text-button" onClick={() => { setEditingEmail(false); setEmail(client.email ?? ''); setEmailError('') }}>Cancelar</button></div></form> : <div className="photo-controls"><button type="button" className="text-button photo-control" onClick={() => setEditingEmail(true)}>{client.email ? `Email: ${client.email}` : 'Añadir email'}</button></div>}<div className="balance-card"><span className="label">{balance > 0 ? 'Deuda actual' : 'Estado'}</span><strong>{balance > 0 ? formatCents(balance) : 'No debe nada'}</strong>{client.note && <p>{client.note}</p>}</div><div className="actions"><button className="primary-action" onClick={onBuy}>+ Nueva compra</button>{canChargeClient(balance) && <button className="secondary-action" onClick={onCharge}>Cobrar {formatCents(balance)}</button>}</div><div className="secondary-actions"><button className="secondary-action subtle-action" onClick={onHistory}>Ver historial</button><button className="secondary-action subtle-action" onClick={onAccount}>Ver cuenta</button>{canAddOpeningBalance && data && !hasActiveOpeningBalance(data.tickets) && <button className="secondary-action subtle-action" onClick={onOpeningBalance}>Añadir saldo anterior</button>}</div>{aging && isOverdue(aging) && aging.ageInDays !== null && <p className="overdue-mark">Pendiente desde hace {ageLabel(aging.ageInDays, aging.approximate)}</p>}{stats && <section className="summary"><h2>Resumen</h2><dl className="summary-grid"><div><dt>Movimientos de deuda activos</dt><dd>{stats.activeDebtMovements}</dd></div><div><dt>Última compra</dt><dd>{stats.lastPurchaseAt ? formatDateTime(stats.lastPurchaseAt) : '—'}</dd></div><div><dt>Último pago</dt><dd>{stats.lastPaymentAt ? formatDateTime(stats.lastPaymentAt) : 'Todavía no hay pagos'}</dd></div><div><dt>Total apuntado</dt><dd>{formatCents(stats.totalChargedActive)}</dd></div><div><dt>Total pagado</dt><dd>{formatCents(stats.totalPaidActive)}</dd></div><div><dt>Movimientos registrados</dt><dd>{stats.movementCount}</dd></div></dl><p className="muted summary-note">Los totales no cuentan movimientos anulados. El saldo anterior cuenta como apuntado. `Última compra` no incluye el saldo anterior.</p></section>}<div className="section-heading"><h2>Movimientos</h2></div>{error && <p className="error">{error}</p>}{data?.tickets.filter((ticket) => ticket.status === 'active').map((ticket) => <button className="movement" key={ticket.id} onClick={() => onTicket(ticket)}><span><b>{movementHeadline(ticket)}</b><small>{movementDetail(ticket)}</small></span><strong className="debt">+ {formatCents(ticket.amount_cents)}</strong></button>)}{data?.payments.filter((payment) => !payment.voided_at).map((payment) => <PaymentRow key={payment.id} user={user} payment={payment} onChanged={() => void loadClientHistory(user, client.id).then(setData)} />)}{data && data.tickets.length === 0 && data.payments.length === 0 && <p className="empty">Todavía no hay movimientos.</p>}{!data && <p className="muted">Cargando movimientos...</p>}</FormPage>
 }
 
 function OpeningBalance({ user, client, photoUrl, onBack, onSaved }: { user: User; client: Client | ClientSummary; photoUrl?: string; onBack: () => void; onSaved: (addedCents: number) => void | Promise<void> }) {
@@ -640,8 +692,12 @@ function AccountView({ user, client, photoUrl, onBack, onTicket }: { user: User;
   const [data, setData] = useState<{ tickets: Ticket[]; payments: Payment[]; balance: number } | null>(null)
   useEffect(() => { void loadClientHistory(user, client.id).then(setData) }, [user, client.id])
   const movements = movementsForDisplay(data?.tickets.filter((ticket) => ticket.status === 'active') ?? [], data?.payments.filter((payment) => !payment.voided_at) ?? [])
-  const balance = data?.balance ?? ('balance' in client ? client.balance : 0)
-  return <FormPage title="Ver cuenta" onBack={onBack}><section className="account-summary"><div className="account-who"><Avatar name={client.name} photoUrl={photoUrl} /><strong className="client-identity-name">{client.name}</strong></div><strong>{formatCents(balance)}</strong><p>{balance > 0 ? 'Total pendiente' : 'No debe nada'}</p></section><MovementList movements={movements} onTicket={onTicket} empty="Todavía no hay movimientos pendientes." /></FormPage>
+  // Todas las cifras salen del modelo unico de `Ver cuenta`, el mismo que se
+  // reutilizara para email, PDF o WhatsApp. La lista de arriba solo sirve para
+  // poder abrir un movimiento concreto.
+  const account = data ? buildAccountView(client, data.tickets, data.payments, new Date()) : null
+  const balance = account?.balanceCents ?? ('balance' in client ? client.balance : 0)
+  return <FormPage title="Ver cuenta" onBack={onBack}><section className="account-summary"><div className="account-who"><Avatar name={client.name} photoUrl={photoUrl} /><strong className="client-identity-name">{client.name}</strong></div><strong>{formatCents(balance)}</strong><p>{balance > 0 ? 'Total pendiente' : 'No debe nada'}</p>{account && account.ageInDays !== null && balance > 0 && <p className="account-age">Pendiente desde hace {ageLabel(account.ageInDays, account.ageApproximate)}</p>}{account?.clientEmail && <p className="account-email-line">{account.clientEmail}</p>}</section>{account && <dl className="summary-grid account-totals"><div><dt>Total apuntado</dt><dd>{formatCents(account.totalChargedCents)}</dd></div><div><dt>Total pagado</dt><dd>{formatCents(account.totalPaidCents)}</dd></div></dl>}<MovementList movements={movements} onTicket={onTicket} empty="Todavía no hay movimientos pendientes." /></FormPage>
 }
 
 function movementsForDisplay(tickets: Ticket[], payments: Payment[]): DisplayMovement[] {

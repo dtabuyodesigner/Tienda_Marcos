@@ -99,6 +99,17 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .help-list, .help-steps { margin: 0 0 10px; padding-left: 22px; font: 16px/25px system-ui, sans-serif; }
 .help-list li, .help-steps li { margin-bottom: 6px; }
 .field-hint { display: block; margin: -6px 0 0; color: #43474e; font: 14px/20px system-ui, sans-serif; }
+.overdue { display: grid; gap: 10px; padding: 16px; margin: -12px 0 24px; border: 1px solid #e8c9a0; border-radius: 12px; background: #fdf3e3; }
+.overdue h2 { font-size: 17px; line-height: 1.35; color: #6b4a12; }
+.overdue-list { display: grid; gap: 6px; }
+.overdue-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; min-height: 48px; padding: 10px 12px; border-radius: 8px; text-align: left; background: rgba(255,255,255,.75); color: #1b1c1a; }
+.overdue-row span { color: #43474e; font: 15px/22px system-ui, sans-serif; }
+.overdue-mark { margin: -6px 0 16px; color: #6b4a12; font: 600 15px/22px system-ui, sans-serif; }
+.account-age { margin: 8px 0 0; color: #43474e; font: 15px/22px system-ui, sans-serif; }
+.account-email-line { margin: 4px 0 0; color: #43474e; font: 15px/22px system-ui, sans-serif; overflow-wrap: anywhere; }
+.account-totals { margin: -6px 0 20px; }
+.email-edit { gap: 12px; margin-bottom: 18px; }
+.email-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .heading-action { flex: 0 0 auto; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }

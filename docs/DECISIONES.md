@@ -86,6 +86,65 @@
 - En pantallas de menos de 380px el nombre se oculta visualmente y queda avatar mas flecha, pero el texto sigue en el arbol de accesibilidad para no dejar un boton sin nombre.
 - `Ayuda` ira en este menu, entre `Cuenta` y `Cerrar sesión`, cuando la seccion exista. No se ha anadido ahora para no dejar un enlace muerto.
 
+## Antiguedad De La Deuda (FIFO)
+
+- La antiguedad de una cuenta es la del dinero que sigue sin pagarse, no la del ultimo movimiento. Una compra nueva no puede rejuvenecer una deuda anterior que sigue viva.
+- Algoritmo: se ordenan los movimientos de deuda activos por fecha, se suman todos los pagos no anulados en un unico credito y se va consumiendo contra la deuda **de la mas antigua a la mas reciente**. Lo que queda vivo son los tramos, y el mas antiguo da la antiguedad de la cuenta.
+- Ejemplo: compra de 20,00 EUR el 27 de julio, compra de 10,00 EUR el 25 de agosto, pago de 15,00 EUR. Quedan 5,00 EUR vivos del 27 de julio y 10,00 EUR del 25 de agosto. La cuenta arrastra deuda desde el 27 de julio.
+- **Calculo derivado, sin estado nuevo.** No se persiste ninguna imputacion de pagos a tickets. Motivo: una imputacion guardada habria que rehacerla a mano cada vez que se anula un pago o un ticket, y una imputacion desincronizada es peor que no tenerla. Como todo sale de los movimientos vivos, anular un pago rehace el calculo solo.
+- Los movimientos anulados no existen para este calculo, ni los tickets ni los pagos.
+- El dia es el **dia natural en `Europe/Madrid`**, comparando fechas civiles, no restando horas. Asi `7 dias` significa lo mismo a las 9:00 que a las 23:00, y el cambio de hora no descuadra nada.
+- El calculo vive en `src/lib/aging.ts`, es puro y no toca red ni entorno.
+
+## Aviso De Cuentas Antiguas
+
+- Umbral inicial: **7 dias**, en la constante `OVERDUE_THRESHOLD_DAYS` de `src/lib/aging.ts`. Se cambia ahi y en ningun otro sitio: la interfaz y el resumen leen esa constante.
+- La regla es **estrictamente mas de** el umbral, porque el texto dice `llevan más de 7 días`. A los 7 dias todavia no avisa; a los 8 si.
+- El aviso solo aparece si hay cuentas que lo superan. Nada de bloques vacios.
+- En Inicio se muestran como mucho tres, con nombre, saldo y antiguedad, y `Ver todas` lleva al Resumen cuando hay mas.
+- **No hay scoring ni etiquetas.** Nunca se dice moroso, mal pagador, riesgo ni cliente problematico. Solo el hecho objetivo: cuanto debe y desde cuando. Hay una prueba que falla si aparece alguna de esas palabras.
+
+## Saldo Anterior Y Antiguedad
+
+- La fecha de un saldo anterior es la del dia en que Marcos lo apunto, no el dia en que nacio la deuda. Presentarla como exacta seria inventarse una precision que no tenemos.
+- Por eso, cuando el tramo vivo mas antiguo es un saldo anterior, se dice **`al menos X días`** en vez de `X días`. El modelo lo marca con `approximate`.
+- Mejora futura documentada y NO implementada: un campo opcional `deuda desde` al registrar el saldo anterior, para quien recuerde la fecha real. No hace falta para presentar esto con honestidad, asi que no se adelanta.
+
+## Resumen Global
+
+- Pantalla `Resumen`, accesible desde el menu de usuario, con cifras y listas. Sin graficas: para esta tienda un numero claro vale mas que un panel.
+- Definiciones exactas:
+  - `Pendiente total`: suma de los saldos vivos de todos los clientes.
+  - `Clientes con deuda`: clientes con saldo mayor que cero.
+  - `Cuentas de mas de 7 dias`: cuentas cuyo tramo vivo mas antiguo pasa del umbral.
+  - `Deuda de mas de 7 dias`: **solo los tramos** que llevan mas de ese tiempo sin pagarse, no el saldo entero de esas cuentas. Parte de ese saldo puede ser de ayer, y sumarlo entero exageraria la cifra.
+  - `Compras fiadas` del mes: compras activas creadas en el mes civil en curso. Un saldo anterior NO cuenta como compra del mes aunque se apuntase este mes.
+  - `Cobrado` del mes: pagos no anulados del mes civil en curso. Un pago anulado no cuenta como cobrado.
+- El mes civil se calcula tambien en `Europe/Madrid`, asi que una compra del 31 de agosto a las 23:30 UTC cuenta como septiembre, que es cuando ocurrio en la tienda.
+
+## Email Del Cliente
+
+- Campo **opcional**. Nunca obligatorio, y la aplicacion funciona igual si el cliente no tiene email. No se pide ni se deduce automaticamente.
+- Se guarda normalizado en minusculas y sin espacios. La validacion de formato es deliberadamente permisiva: rechazar la direccion real de un cliente es peor error que aceptar una rara. No se valida DNS ni MX, que es imposible en el navegador.
+- Hoy **no se envia nada**. Es solo un dato de contacto para un envio manual futuro.
+- No se usara para campanas, marketing, envios automaticos ni recordatorios automaticos.
+- No se muestra en los listados generales, solo en la ficha y en `Ver cuenta`, donde aporta.
+
+## Modelo Unico De Ver Cuenta
+
+- `src/lib/account-view.ts` produce los datos de `Ver cuenta` una sola vez, y esa misma funcion alimentara el email, el PDF y el WhatsApp cuando existan. La logica de calculo no se duplica en cuatro sitios.
+- Es **compartible por construccion**: no lleva identificadores tecnicos, ni la nota privada, ni el apodo, ni nada de otros clientes. Lo que no esta ahi no puede escaparse por descuido el dia que se envie fuera. Hay una prueba que serializa el modelo y falla si aparece cualquiera de esas cosas.
+- La pantalla usa el modelo para todas las cifras y mantiene aparte su propia lista para poder abrir un movimiento concreto, que es lo unico que necesita identificadores.
+- **No se deja ningun boton muerto.** `Enviar por email` no existe hasta que exista el backend seguro.
+
+## Envio A Clientes (Arquitectura Futura, No Implementada)
+
+- El envio saldra de una capa de servidor, nunca del navegador. La clave de Brevo no puede estar en el frontend.
+- El destinatario se resolvera en servidor a partir del cliente y de la tienda del usuario autenticado. Nunca se aceptara un destinatario ni un contenido enviados desde el navegador: eso convertiria la aplicacion en un relay de correo abierto.
+- El contenido se generara desde el modelo unico de `Ver cuenta`, que ya es compartible por construccion.
+- Siempre lo disparara Marcos a mano. Ningun envio automatico.
+- Se valorara registrar cuando se envio, a que email, que cliente y que usuario lo hizo. Sin convertir la aplicacion en un CRM.
+
 ## Registro Controlado
 
 - El registro no es publico. La Libreta esta en fase privada para Marcos y pruebas: cualquiera que encuentre la URL no debe poder crearse una tienda. Hace falta un codigo de invitacion.

@@ -53,6 +53,28 @@ Sin bloqueos documentados ahora mismo.
 - Incluye: pantalla `Ayuda` en el menu de usuario entre `Cuenta` y `Cerrar sesión`, con 14 preguntas reales de mostrador en bloques desplegables, y ayudas contextuales en saldo anterior, foto del ticket, anulacion y cambio de contrasena.
 - Es contenido estatico de la aplicacion: se lee sin pedir nada al servidor.
 
+### Antiguedad de deuda (FIFO)
+
+- Estado: **RESUELTO / VALIDADO**.
+- Incluye: imputacion FIFO de pagos sobre la deuda mas antigua, calculo derivado sin estado nuevo, dias naturales en `Europe/Madrid`, y tratamiento honesto del saldo anterior como cota inferior (`al menos X días`).
+- Definiciones y motivos en `docs/DECISIONES.md`.
+
+### Avisos de cuentas pendientes por antiguedad
+
+- Estado: **RESUELTO / VALIDADO**.
+- Incluye: aviso en Inicio con nombre, saldo y antiguedad de hasta tres cuentas, `Ver todas` hacia el Resumen, y marca discreta en la ficha del cliente. Sin etiquetas de moroso ni scoring.
+- Umbral en la constante `OVERDUE_THRESHOLD_DAYS` de `src/lib/aging.ts`. Regla: estrictamente mas de 7 dias.
+
+### Resumen global de la tienda
+
+- Estado: **RESUELTO / VALIDADO**.
+- Incluye: pantalla `Resumen` en el menu de usuario con pendiente total, clientes con deuda, cuentas y deuda de mas de 7 dias, compras y cobros del mes, y lista de las cinco cuentas mas antiguas.
+
+### Email opcional del cliente (campo)
+
+- Estado: **RESUELTO / VALIDADO** como campo y modelo. El envio NO esta hecho y sigue como pendiente aparte.
+- Incluye: `clients.email` opcional mediante la migracion `202608270006_add_client_email.sql`, alta y edicion desde la ficha, normalizacion y validacion de formato, y modelo unico de `Ver cuenta` compartible por construccion.
+
 ### Foto opcional del cliente
 
 - Estado: **RESUELTO / VALIDADO** el 27 de agosto de 2026 contra `Marcos_Tienda`.
@@ -117,88 +139,14 @@ Sin bloqueos documentados ahora mismo.
 - Estado: pendiente.
 - Dependencias: observar si el listado real crece lo suficiente.
 
-### Avisos de cuentas pendientes por antiguedad
+### Envio manual del resumen de cuenta al cliente
 
-- Descripcion: avisar a Marcos dentro de la aplicacion cuando una cuenta lleve pendiente mas de un numero determinado de dias. Umbral inicial propuesto: 7 dias, disenado desde el principio para ser configurable despues (7/15/30 o valor personalizado).
-- Utilidad: en una tienda pequena, saber que tres cuentas llevan mas de una semana sin moverse vale mas que cualquier grafica. Es el aviso que convierte la libreta en algo que trabaja para Marcos en vez de limitarse a registrar.
+- Descripcion: permitir a Marcos enviar a un cliente el resumen de su cuenta, a mano, desde `Ver cuenta`.
 - Prioridad: P1.
-- Estado: pendiente, no implementado.
-- Dependencias: diseno del calculo de antiguedad y prueba real con Marcos.
-- Nota: el `Resumen` de la ficha se implemento sin esta cifra a proposito. Calcularla con `created_at` seria falso en cuanto hay pagos parciales o saldo anterior.
-
-#### Presentacion objetivo
-
-- Primera version: aviso dentro de la aplicacion, en Inicio y en la ficha del cliente. Nada de contacto automatico.
-- En Inicio, resumen de una linea sobre el total pendiente que ya se muestra. Forma buscada:
-  - `Pendiente total: 483,20 € · 7 clientes`
-  - `⚠ 3 cuentas llevan más de 7 días pendientes`
-- Al abrir el aviso, listar cliente, importe pendiente y antiguedad.
-- En la ficha del cliente, marca discreta de antiguedad junto al saldo. Jerarquia secundaria: no debe competir con `+ Nueva compra` ni `Cobrar`.
-- Enlaza con `Resumen/PDF de cuenta`: el mismo calculo de antiguedad deberia alimentar ambos.
-
-#### Calculo de antiguedad
-
-Es la parte delicada del pendiente y hay que resolverla antes de escribir interfaz.
-
-- La antiguedad es la de la deuda que sigue viva, no la del ultimo movimiento. Una compra nueva no debe rejuvenecer una deuda anterior que sigue sin pagarse.
-- Metodo propuesto: imputar los pagos a la deuda mas antigua primero (FIFO). La antiguedad de la cuenta es la del movimiento de deuda mas antiguo que aun no ha quedado cubierto por pagos.
-  - Ejemplo: compra del 27/07 de 20,00 EUR, compra del 25/08 de 10,00 EUR y un pago de 15,00 EUR. El pago cubre 15,00 de la compra del 27/07, que sigue viva con 5,00 EUR. La cuenta tiene la antiguedad del 27/07, no la del 25/08.
-- Solo entran movimientos activos: tickets anulados y pagos anulados quedan fuera del calculo. Anular un pago debe recalcular la imputacion desde cero, no parchear el resultado anterior.
-- Si el saldo del cliente es cero, no hay antiguedad que mostrar.
-- Definir "dia" con cuidado: dias naturales completos en la zona horaria de la tienda (`Europe/Madrid`), para que `7 dias` signifique lo mismo a las 9:00 que a las 23:00.
-- El calculo debe vivir en una funcion pura y con tests, al estilo de `calculateActiveBalance`. `loadDashboard` ya trae tickets activos y pagos no anulados de la tienda, asi que la primera version no deberia necesitar consultas nuevas.
-
-#### Tratamiento de `opening_balance`
-
-- Problema: la fecha de registro de un saldo anterior es el dia en que Marcos lo apunto, no el dia en que nacio la deuda. Tratarlo por `created_at` haria que una deuda de meses apareciese como recien nacida, que es justo el error que este aviso debe evitar.
-- Regla minima innegociable: un saldo anterior nunca puede considerarse mas nuevo que su fecha de registro. Por definicion la deuda ya existia antes.
-- Opciones a valorar:
-  1. Anadir un campo opcional de fecha de origen al registrar el saldo anterior (`deuda desde`), con migracion versionada. Es la solucion correcta: Marcos suele saber aproximadamente desde cuando arrastra la deuda.
-  2. Sin ese dato, usar la fecha de registro como cota inferior y presentarlo como `pendiente desde al menos X dias`, sin afirmar una antiguedad exacta que no conocemos.
-  3. Descartada: excluir los saldos anteriores del aviso. Son precisamente las deudas mas viejas y dejarlas fuera vaciaria de sentido la funcionalidad.
-- Recomendacion: implementar la opcion 2 primero, porque no necesita cambios de esquema, y evaluar la opcion 1 con Marcos cuando se vea si recuerda las fechas reales.
-
-#### Limites explicitos
-
-- No contactar automaticamente al cliente en ninguna forma.
-- No enviar WhatsApp, SMS ni email sin una funcionalidad futura explicita, disenada aparte y siempre disparada por Marcos, nunca automatica.
-- Notificacion push o resumen diario al movil de Marcos: solo a estudiar despues de que el aviso dentro de la aplicacion se haya probado en uso real.
-
-### Email del cliente + envio manual de resumen de cuenta
-
-- Descripcion: guardar un email opcional en la ficha del cliente y, mas adelante, permitir a Marcos enviarle manualmente un resumen de su cuenta.
-- Prioridad: P1.
-- Estado: pendiente. No implementar todavia.
-- Dependencia: consolidar antes `Ver cuenta` y decidir un formato unico de resumen.
-
-#### Email del cliente
-
-- Campo opcional, nunca obligatorio. La aplicacion debe funcionar igual si el cliente no tiene email.
-- No pedirlo ni deducirlo automaticamente.
-
-#### Envio manual
-
-- Accion futura desde `Ver cuenta`: `Enviar por email`.
-- Siempre con accion explicita de Marcos. Nada de envios automaticos, recordatorios automaticos ni campanas.
-
-#### Contenido del resumen
-
-- Puede incluir: nombre del cliente, saldo actual, movimientos relevantes, fechas, importes, pagos realizados, importes pendientes y total pendiente.
-- No debe incluir: notas privadas, apodos internos si no son apropiados, metadatos tecnicos ni informacion de otros clientes.
-
-#### Proveedor y seguridad
-
-- Estudiar reutilizar Brevo como proveedor transaccional, pero separado del correo de Auth: son dos flujos distintos y no deben mezclarse.
-- Nunca exponer claves de Brevo en el frontend. El envio tiene que salir de una capa de servidor.
-- Un usuario no debe poder manipular destinatario ni contenido para enviar correo fuera de su tienda.
-
-#### Auditoria minima
-
-- Valorar registrar cuando se envio, a que email, que cliente y que usuario de la tienda lo hizo. Sin convertir la aplicacion en un CRM.
-
-#### Futuro relacionado
-
-- El mismo resumen debe poder reutilizarse para WhatsApp manual, PDF e impresion, sin duplicar la logica de calculo.
+- Estado: **pendiente**. El campo de email del cliente y el modelo unico de `Ver cuenta` ya estan hechos; falta la capa de servidor que envia.
+- Lo que falta: capa server-side con Brevo, clave fuera del frontend, destinatario resuelto en servidor a partir del cliente y de la tienda del usuario, disparo siempre manual y posible registro del envio. La arquitectura esta descrita en `docs/DECISIONES.md`.
+- Deliberadamente no hay ningun boton `Enviar por email` mientras no exista ese backend: nada de botones muertos.
+- Dependencias: decidir si la capa server-side es una Edge Function de Supabase o una funcion en Vercel.
 
 ### Compartir cuenta por WhatsApp
 

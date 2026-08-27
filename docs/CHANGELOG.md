@@ -1,5 +1,46 @@
 # Changelog
 
+## Pendiente - Antiguedad FIFO, avisos, resumen global y email del cliente
+
+Base: `9f4e2b73e2446dfbb362041b635ac6fb545a6759`.
+
+### Antiguedad de deuda
+
+- Nuevo modulo puro `src/lib/aging.ts`: imputa los pagos a la deuda mas antigua primero, de modo que una compra nueva no rejuvenece una deuda anterior que sigue viva.
+- Calculo derivado, sin persistir imputaciones: anular un pago o un ticket rehace el resultado solo.
+- Dias naturales en `Europe/Madrid`, comparando fechas civiles, no restando horas.
+- El saldo anterior se presenta como cota inferior (`al menos X días`) porque su fecha es la de registro, no la real.
+
+### Avisos
+
+- Aviso en Inicio cuando hay cuentas que llevan mas de 7 dias, con nombre, saldo y antiguedad, y `Ver todas` hacia el Resumen.
+- Marca discreta en la ficha del cliente. Sin etiquetas de moroso ni scoring, con una prueba que falla si aparecen.
+- Umbral en una sola constante.
+
+### Resumen global
+
+- Nueva pantalla `Resumen` en el menu de usuario: pendiente total, clientes con deuda, cuentas y deuda de mas de 7 dias, compras y cobros del mes, y las cinco cuentas mas antiguas.
+- La deuda de mas de 7 dias cuenta solo los tramos viejos, no el saldo entero de esas cuentas.
+
+### Email del cliente
+
+- Migracion `202608270006_add_client_email.sql`: `clients.email` opcional, sin indice porque no se busca por email.
+- Campo en el alta y edicion desde la ficha, con normalizacion y validacion de formato permisiva.
+- No se envia nada: es solo un dato de contacto para un envio manual futuro.
+
+### Modelo unico de Ver cuenta
+
+- Nuevo `src/lib/account-view.ts`, compartible por construccion: sin identificadores tecnicos, sin nota privada y sin apodo, para que reutilizarlo en email, PDF o WhatsApp no exija acordarse de filtrar nada.
+
+### Rendimiento
+
+- El panel ya traia los movimientos vivos de la tienda en una sola carga; ahora se reutilizan para antiguedad y resumen. Ninguna consulta nueva por cliente.
+
+### Validacion
+
+- 214 pruebas en verde.
+- Migracion aplicada en `Marcos_Tienda` con los datos previos intactos.
+
 ## Pendiente - Onboarding real validado de extremo a extremo
 
 Base: `7450ae509d6a39a64e9a8c4ae2fed9c842727442`.

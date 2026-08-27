@@ -16,6 +16,12 @@ Tickets y pagos usan `BIGINT amount_cents`, nunca float. Sus operaciones económ
 
 `clients` admite `nickname` y `note` como campos opcionales de ayuda operativa. El apodo participa en busqueda; la nota se muestra en la ficha sin intervenir en calculos economicos.
 
+`clients.email` es opcional y solo es un dato de contacto: hoy no se envia nada desde la aplicacion.
+
+La antiguedad de la deuda no se guarda: se deriva. `src/lib/aging.ts` imputa los pagos a la deuda mas antigua primero (FIFO) sobre los movimientos vivos, asi que anular un pago o un ticket rehace el calculo solo, sin estado que pueda quedar desincronizado. `src/lib/overview.ts` agrega eso mismo a nivel de tienda y `src/lib/account-view.ts` produce el modelo unico de `Ver cuenta`. Los tres son puros y no tocan red.
+
+El panel de Inicio trae en una sola carga los tickets activos y los pagos no anulados de la tienda, y de ahi salen el saldo, la antiguedad de cada cliente y el resumen global. No hay una consulta por cliente.
+
 ## UX Y Orden
 
 La lista principal ordena clientes con deuda primero. Como criterio secundario usa la fecha de actividad economica mas reciente y, si empata, el nombre en orden alfabetico. En la seleccion de compra se muestran clientes recientes antes del listado completo para reducir pasos en mostrador.

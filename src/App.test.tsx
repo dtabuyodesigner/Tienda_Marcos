@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { User } from '@supabase/supabase-js'
 import { Login, SUCCESS_NOTICE_MS, Workspace } from './App'
 import type { Client, ClientSummary } from './lib/data'
-import { attachClientPhoto, createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard, removeClientPhoto } from './lib/data'
-import type { Ticket } from './lib/data'
+import { attachClientPhoto, createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard, removeClientPhoto, updateClientEmail } from './lib/data'
+import type { Payment, Ticket } from './lib/data'
 
 const { auth, rpc } = vi.hoisted(() => ({
   auth: {
@@ -29,6 +29,7 @@ vi.mock('./lib/data', async (importOriginal) => ({
   createOpeningBalance: vi.fn(),
   attachClientPhoto: vi.fn(),
   removeClientPhoto: vi.fn(),
+  updateClientEmail: vi.fn(),
   signedPhotoUrls: vi.fn(async () => ({})),
   attachTicketPhoto: vi.fn(),
   signedPhotoUrl: vi.fn(),
@@ -41,8 +42,8 @@ function summary(name: string, balance: number, id = name.toLowerCase(), photoPa
   return { id, store_id: 'store-1', name, phone: null, nickname: null, note: null, photo_path: photoPath, active: true, balance, lastActivityAt: '2026-08-27T10:00:00Z' }
 }
 
-function dashboard(overrides: Partial<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean; supportsClientPhoto: boolean; photoUrls: Record<string, string>; displayName: string | null }> = {}) {
-  return { clients: [], total: 0, supportsOpeningBalance: true, supportsClientPhoto: true, photoUrls: {}, displayName: 'Marcos', ...overrides }
+function dashboard(overrides: Partial<{ clients: ClientSummary[]; total: number; tickets: Ticket[]; payments: Payment[]; supportsOpeningBalance: boolean; supportsClientPhoto: boolean; photoUrls: Record<string, string>; displayName: string | null }> = {}) {
+  return { clients: [], total: 0, tickets: [], payments: [], supportsOpeningBalance: true, supportsClientPhoto: true, photoUrls: {}, displayName: 'Marcos', ...overrides }
 }
 
 function history(client: ClientSummary | Client, balance: number, tickets: Ticket[] = []) {
@@ -443,11 +444,11 @@ describe('control de usuario de la cabecera', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('ofrece Ayuda entre Cuenta y Cerrar sesión', async () => {
+  it('ofrece Resumen, Cuenta y Ayuda antes de Cerrar sesión', async () => {
     await abrirMenu()
 
     await screen.findByRole('menu')
-    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Cuenta', 'Ayuda', 'Cerrar sesión'])
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Resumen', 'Cuenta', 'Ayuda', 'Cerrar sesión'])
   })
 
   it('abre la Ayuda desde el menu y se puede volver', async () => {
@@ -512,15 +513,13 @@ describe('control de usuario de la cabecera', () => {
   it('es navegable por teclado dentro del menu', async () => {
     await abrirMenu()
     const menu = await screen.findByRole('menu')
-    const [cuenta, ayuda, salir] = screen.getAllByRole('menuitem')
+    const [resumen, cuenta, , salir] = screen.getAllByRole('menuitem')
 
-    expect(document.activeElement).toBe(cuenta)
-    fireEvent.keyDown(menu, { key: 'ArrowDown' })
-    expect(document.activeElement).toBe(ayuda)
-    fireEvent.keyDown(menu, { key: 'ArrowDown' })
-    expect(document.activeElement).toBe(salir)
+    expect(document.activeElement).toBe(resumen)
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
     expect(document.activeElement).toBe(cuenta)
+    fireEvent.keyDown(menu, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(resumen)
     fireEvent.keyDown(menu, { key: 'ArrowUp' })
     expect(document.activeElement).toBe(salir)
   })
@@ -993,5 +992,188 @@ describe('ayudas contextuales', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Cuenta' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Cambiar contraseña' }))
     expect(await screen.findByText(/confirma tu contraseña actual/)).toBeTruthy()
+  })
+})
+
+describe('avisos de cuentas pendientes por antiguedad', () => {
+  // Reloj congelado: la antiguedad se mide en dias naturales, asi que una pasada
+  // que cruce la medianoche convertiria un "8 dias" en 9 y el test parpadearia.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-08-27T10:00:00Z'))
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  function diasAtras(dias: number): string {
+    return new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString()
+  }
+  function conDeuda(dias: number, extra: Partial<Ticket> = {}) {
+    const t = ticket({ id: 'viejo', amount_cents: 7900, created_at: diasAtras(dias), ...extra })
+    return dashboard({ clients: [summary('Margarita', 7900, 'ana')], total: 7900, tickets: [t], payments: [] })
+  }
+
+  it('a los 6 dias todavia no avisa', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conDeuda(6))
+    render(<Workspace user={user} />)
+
+    await screen.findByRole('button', { name: /Margarita/ })
+    expect(screen.queryByText(/llevan? más de 7 días/)).toBeNull()
+  })
+
+  it('a los 7 dias tampoco: la regla es mas de 7', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conDeuda(7))
+    render(<Workspace user={user} />)
+
+    await screen.findByRole('button', { name: /Margarita/ })
+    expect(screen.queryByText(/llevan? más de 7 días/)).toBeNull()
+  })
+
+  it('a los 8 dias avisa con nombre, saldo y antiguedad', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conDeuda(8))
+    render(<Workspace user={user} />)
+
+    const aviso = await screen.findByLabelText('Cuentas pendientes desde hace tiempo')
+    expect(within(aviso).getByRole('heading').textContent).toContain('Una cuenta lleva más de 7 días pendientes')
+    const fila = within(aviso).getByRole('button', { name: /Margarita/ })
+    expect(fila.textContent).toContain('79,00')
+    expect(fila.textContent).toContain('8 días')
+    expect(fila.textContent).not.toContain('al menos')
+  })
+
+  it('con saldo anterior dice al menos, sin fingir precision', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conDeuda(12, { origin: 'opening_balance' }))
+    render(<Workspace user={user} />)
+
+    const aviso = await screen.findByLabelText('Cuentas pendientes desde hace tiempo')
+    expect(within(aviso).getByRole('button', { name: /Margarita/ }).textContent).toContain('al menos 12 días')
+  })
+
+  it('una compra reciente no rejuvenece la deuda antigua', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({
+      clients: [summary('Margarita', 3000, 'ana')],
+      total: 3000,
+      tickets: [ticket({ id: 'julio', amount_cents: 2000, created_at: diasAtras(31) }), ticket({ id: 'hoy', amount_cents: 1000, created_at: diasAtras(0) })],
+      payments: [],
+    }))
+    render(<Workspace user={user} />)
+
+    const aviso = await screen.findByLabelText('Cuentas pendientes desde hace tiempo')
+    expect(within(aviso).getByRole('button', { name: /Margarita/ }).textContent).toContain('31 días')
+  })
+
+  it('sin cuentas antiguas no aparece ningun bloque vacio', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conDeuda(2))
+    render(<Workspace user={user} />)
+
+    await screen.findByRole('button', { name: /Margarita/ })
+    expect(screen.queryByLabelText('Cuentas pendientes desde hace tiempo')).toBeNull()
+  })
+
+  it('un cliente sin saldo nunca sale en el aviso', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({
+      clients: [summary('Margarita', 0, 'ana')],
+      tickets: [ticket({ id: 't', amount_cents: 2000, created_at: diasAtras(40) })],
+      payments: [{ id: 'p', store_id: 'store-1', client_id: 'ana', amount_cents: 2000, created_by: 'u', created_at: diasAtras(1), voided_at: null, voided_by: null, void_reason: null }],
+    }))
+    render(<Workspace user={user} />)
+
+    await screen.findByRole('button', { name: /Margarita/ })
+    expect(screen.queryByLabelText('Cuentas pendientes desde hace tiempo')).toBeNull()
+  })
+
+  it('la ficha marca la antiguedad sin etiquetar al cliente', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conDeuda(12))
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Margarita', 7900, 'ana'), 7900, [ticket({ id: 'viejo', amount_cents: 7900, created_at: diasAtras(12) })]))
+    render(<Workspace user={user} />)
+    const aviso = await screen.findByLabelText('Cuentas pendientes desde hace tiempo')
+    fireEvent.click(within(aviso).getByRole('button', { name: /Margarita/ }))
+
+    expect(await screen.findByText('Pendiente desde hace 12 días')).toBeTruthy()
+    const pantalla = document.body.textContent ?? ''
+    for (const etiqueta of ['moroso', 'mal pagador', 'riesgo', 'problemático']) {
+      expect(pantalla.toLowerCase()).not.toContain(etiqueta)
+    }
+  })
+})
+
+describe('resumen global de la tienda', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-08-27T10:00:00Z'))
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('se abre desde el menu y muestra cifras y cuentas antiguas', async () => {
+    const viejo = ticket({ id: 'v', amount_cents: 7900, created_at: new Date(Date.now() - 12 * 86400000).toISOString() })
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Margarita', 7900, 'ana')], total: 7900, tickets: [viejo], payments: [] }))
+    render(<Workspace user={user} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcos' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Resumen' }))
+
+    expect(await screen.findByRole('heading', { name: 'Resumen' })).toBeTruthy()
+    expect(screen.getByText('Pendiente total')).toBeTruthy()
+    expect(screen.getByText('Clientes con deuda')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Este mes' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Cuentas más antiguas' })).toBeTruthy()
+    expect(screen.getAllByText(/79,00/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('email opcional del cliente', () => {
+  it('el alta acepta cliente sin email', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(createClient).mockResolvedValue({ id: 'lucia', store_id: 'store-1', name: 'Lucía', phone: null, nickname: null, note: null, email: null, active: true })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
+    vi.mocked(loadClientHistory).mockResolvedValue(history({ id: 'lucia', name: 'Lucía' } as Client, 0))
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+
+    await waitFor(() => expect(createClient).toHaveBeenCalledWith(user, expect.objectContaining({ email: null })))
+  })
+
+  it('el alta normaliza el email y rechaza uno invalido', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(createClient).mockResolvedValue({ id: 'lucia', store_id: 'store-1', name: 'Lucía', phone: null, nickname: null, note: null, email: 'lucia@correo.es', active: true })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
+
+    // `type="email"` ya frena lo evidente en el navegador. Se prueba el caso que
+    // el navegador acepta y nuestra regla no: dominio sin punto.
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: 'lucia@correo' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('email')
+    expect(createClient).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: '  Lucia@Correo.ES  ' } })
+    vi.mocked(loadClientHistory).mockResolvedValue(history({ id: 'lucia', name: 'Lucía' } as Client, 0))
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+
+    await waitFor(() => expect(createClient).toHaveBeenCalledWith(user, expect.objectContaining({ email: 'lucia@correo.es' })))
+  })
+
+  it('permite anadir y cambiar el email desde la ficha', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(updateClientEmail).mockResolvedValue({ ...summary('Ana', 1840), email: 'ana@correo.es' })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Añadir email' }))
+    fireEvent.change(screen.getByLabelText(/Email del cliente/), { target: { value: 'ana@correo.es' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar email' }))
+
+    await waitFor(() => expect(updateClientEmail).toHaveBeenCalledWith(user, expect.objectContaining({ id: 'ana' }), 'ana@correo.es'))
+  })
+
+  it('no rompe la ficha de un cliente que nunca tuvo email', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    expect(await screen.findByRole('button', { name: 'Añadir email' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Cobrar/ })).toBeTruthy()
   })
 })

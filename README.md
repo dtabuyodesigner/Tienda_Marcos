@@ -36,6 +36,9 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 - `Cobrar` solo aparece cuando el cliente debe algo.
 - Foto opcional del cliente: se puede anadir al crearlo o despues desde su ficha, y cambiarla o quitarla. Es solo una ayuda visual; se guarda en Storage privado y se lee con signed URL temporal.
 - La ficha incluye un `Resumen` con movimientos de deuda activos, ultima compra, ultimo pago, total apuntado y total pagado.
+- Inicio avisa de las cuentas que llevan mas de 7 dias pendientes, con nombre, saldo y antiguedad. La antiguedad se calcula imputando los pagos a la deuda mas antigua primero, asi que una compra nueva no rejuvenece una deuda vieja.
+- `Resumen` en el menu de usuario muestra el estado de la tienda: pendiente total, cuentas antiguas y compras y cobros del mes.
+- Email opcional del cliente, solo como dato de contacto. La aplicacion no envia nada todavia.
 - `Añadir saldo anterior` registra la deuda que el cliente ya tenia en tickets de papel antes de empezar a usar la aplicacion. Es un unico movimiento con origen propio, no una compra inventada, y aparece en el historial como `Saldo anterior`.
 - Cuenta permite ver el email, cambiar la contrasena y cerrar sesion. El cambio de contrasena exige reautenticacion con la contrasena actual antes de mostrar los campos de contrasena nueva.
 
@@ -54,6 +57,7 @@ Las migraciones versionadas estan en `supabase/migrations/`.
 - `202608270003_add_movement_origin.sql`: origen del movimiento (`purchase` / `opening_balance`) para el saldo anterior a La Libreta.
 - `202608270004_add_client_photo.sql`: referencia opcional a la foto del cliente en Storage privado.
 - `202608270005_add_store_invites.sql`: invitaciones de un solo uso y alta de cuenta solo con invitacion.
+- `202608270006_add_client_email.sql`: email opcional del cliente.
 
 El dinero se guarda siempre como centimos enteros (`amount_cents`). El saldo no se duplica: se calcula como tickets activos menos pagos no anulados.
 

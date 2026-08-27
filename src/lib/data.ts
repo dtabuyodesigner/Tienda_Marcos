@@ -9,14 +9,14 @@ export const CLIENT_PHOTO_PREFIX = 'client-photos'
 /** Las signed URL de avatar duran una hora y se renuevan en cada carga del panel. */
 export const PHOTO_URL_TTL_SECONDS = 3600
 
-export type Client = { id: string; store_id: string; name: string; phone: string | null; nickname: string | null; note: string | null; photo_path?: string | null; active: boolean; created_at?: string; updated_at?: string }
+export type Client = { id: string; store_id: string; name: string; phone: string | null; nickname: string | null; note: string | null; email?: string | null; photo_path?: string | null; active: boolean; created_at?: string; updated_at?: string }
 /** `opening_balance` = deuda anterior a La Libreta, migrada desde los tickets de papel. */
 export type MovementOrigin = 'purchase' | 'opening_balance'
 // `origin` es opcional porque las filas leidas antes de aplicar la migracion 202608270003 no lo traen.
 export type Ticket = { id: string; store_id: string; client_id: string; amount_cents: number; concept: string | null; photo_path: string | null; status: 'active' | 'voided'; origin?: MovementOrigin; created_by: string; created_at: string; voided_at: string | null; voided_by: string | null; void_reason: string | null }
 export type Payment = { id: string; store_id: string; client_id: string; amount_cents: number; created_by: string; created_at: string; voided_at: string | null; voided_by: string | null; void_reason: string | null }
 export type ClientSummary = Client & { balance: number; lastActivityAt: string | null }
-export type ClientInput = { name: string; phone: string; nickname?: string; note?: string }
+export type ClientInput = { name: string; phone: string; nickname?: string; note?: string; email?: string | null }
 
 export function isOpeningBalance(ticket: Pick<Ticket, 'origin'>): boolean {
   return ticket.origin === 'opening_balance'
@@ -95,6 +95,14 @@ export async function attachClientPhoto(user: User, client: Client, file: File):
   return data as Client
 }
 
+/** El email es opcional y editable: pasar null lo deja sin email. */
+export async function updateClientEmail(user: User, client: Client, email: string | null): Promise<Client> {
+  const storeId = await currentStore(user)
+  const { data, error } = await supabase.from('clients').update({ email }).eq('id', client.id).eq('store_id', storeId).select().single()
+  if (error) throw error
+  return data as Client
+}
+
 /** Quitar la foto no borra al cliente ni su historial: solo suelta la referencia. */
 export async function removeClientPhoto(user: User, client: Client): Promise<Client> {
   const storeId = await currentStore(user)
@@ -115,7 +123,7 @@ async function discardPhotoObject(path: string | null | undefined): Promise<void
   }
 }
 
-export async function loadDashboard(user: User): Promise<{ clients: ClientSummary[]; total: number; supportsOpeningBalance: boolean; supportsClientPhoto: boolean; photoUrls: Record<string, string>; displayName: string | null }> {
+export async function loadDashboard(user: User): Promise<{ clients: ClientSummary[]; total: number; tickets: Ticket[]; payments: Payment[]; supportsOpeningBalance: boolean; supportsClientPhoto: boolean; photoUrls: Record<string, string>; displayName: string | null }> {
   const profile = await currentProfile(user)
   const storeId = profile.store_id
   const [{ data: clients, error: clientsError }, { data: tickets, error: ticketsError }, { data: payments, error: paymentsError }, originProbe, photoProbe] = await Promise.all([
@@ -138,6 +146,8 @@ export async function loadDashboard(user: User): Promise<{ clients: ClientSummar
   return {
     clients: summaries,
     total: summaries.reduce((sum, client) => sum + Math.max(client.balance, 0), 0),
+    tickets: tickets as Ticket[],
+    payments: payments as Payment[],
     supportsOpeningBalance: !originProbe.error,
     supportsClientPhoto: !photoProbe.error,
     photoUrls,
@@ -153,6 +163,7 @@ export async function createClient(user: User, input: ClientInput): Promise<Clie
     phone: input.phone.trim() || null,
     nickname: input.nickname?.trim() || null,
     note: input.note?.trim() || null,
+    email: input.email ?? null,
   }).select().single()
   if (error) throw error
   return data as Client
