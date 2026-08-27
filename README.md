@@ -2,7 +2,7 @@
 
 PWA mobile-first para llevar compras fiadas de una tienda pequena: clientes, compras, pagos, fotos opcionales de ticket y trazabilidad de anulaciones.
 
-Estado actual: Fase 3B Subtrabajo 2 cerrado y validado en `768487a6af929f6cf21f898b3df04f03a892f84f`, sobre la base `ab12c75b29c8213f009fb1ea3de5f180df035a91`. La aplicacion esta desplegada y en prueba manual real.
+Estado actual: P1 de migracion de saldos iniciales cerrado y validado en `2b15faa475ee81a3cc30fd8d196faef52a5b7a2a`. Las migraciones `202608270001`, `202608270002` y `202608270003` estan aplicadas en `Marcos_Tienda`. La aplicacion esta desplegada y en prueba manual real.
 
 ## Requisitos
 

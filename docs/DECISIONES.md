@@ -7,6 +7,8 @@
 - Deploy publico: `https://marcos-tienda.vercel.app`.
 - SHA base de Fase 3B Subtrabajo 2: `ab12c75b29c8213f009fb1ea3de5f180df035a91`.
 - SHA de cierre de Fase 3B Subtrabajo 2: `768487a6af929f6cf21f898b3df04f03a892f84f`.
+- SHA del P1 de migracion de saldos: `2b15faa475ee81a3cc30fd8d196faef52a5b7a2a`.
+- Migraciones aplicadas en `Marcos_Tienda`: `202608270001`, `202608270002` y `202608270003`. La base remota esta al dia.
 - `master` es la rama desplegada automaticamente por Vercel: cada push a `master` genera un deployment de produccion. No hay promocion manual, asi que `master` solo debe recibir codigo que pase tests, TypeScript y build.
 
 ## Arquitectura
@@ -36,6 +38,7 @@
 - El origen no se puede reescribir despues de crear el movimiento: trigger propio `protect_ticket_origin`, separado del compartido porque `payments` no tiene esa columna.
 - La anulacion reutiliza la trazabilidad existente: quien anulo, cuando y por que, y el importe deja de contar en el saldo.
 - `Añadir saldo anterior` es una accion secundaria de puesta en marcha. No compite con `+ Nueva compra` ni con `Cobrar`, y desaparece de la ficha cuando el cliente ya tiene un saldo anterior vivo.
+- La sonda de esquema descrita abajo se mantiene aunque la migracion ya este aplicada: es barata, deja el orden de despliegue libre y protege ante un entorno futuro que aun no tenga la migracion.
 - La aplicacion comprueba al cargar si el esquema ya tiene la columna `origin`. Si la migracion aun no esta aplicada, la accion no se ofrece en lugar de fallar al guardar. Asi el despliegue del frontend y la aplicacion de la migracion pueden ir en cualquier orden sin romper produccion.
 
 ## Seguridad

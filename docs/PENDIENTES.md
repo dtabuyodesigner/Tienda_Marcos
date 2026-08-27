@@ -6,41 +6,37 @@ Inventario vivo del proyecto. No implica implementacion automatica: cada punto d
 
 Sin bloqueos documentados ahora mismo.
 
-## Resuelto en Fase 3B Subtrabajo 2
+## Resuelto
 
-### Mejoras UX detectadas en prueba real
+### Mejoras UX detectadas en prueba real (Fase 3B Subtrabajo 2)
 
 - Estado: resuelto y validado sobre `ab12c75b29c8213f009fb1ea3de5f180df035a91`.
 - Incluye: clientes recientes al apuntar compra, orden inteligente de clientes, fila completa pulsable, confirmaciones con saldo actualizado, boton secundario `Ver historial`, alta de cliente desde ficha con vuelta correcta al cancelar, ocultar `Cobrar` cuando el saldo es cero, vista `Ver cuenta`, estados vacios claros y mejor presentacion de `Foto del ticket`.
 - Motivo: reducir pasos reales de mostrador sin ampliar el producto hacia TPV, catalogo, OCR, WhatsApp o PDF.
 
-### Endurecimiento de la pantalla Cuenta
+### Endurecimiento de la pantalla Cuenta (Fase 3B Subtrabajo 2)
 
 - Estado: resuelto.
 - Incluye: email de acceso legible en su propia linea, cambio de contrasena oculto tras una accion secundaria, reautenticacion obligatoria con la contrasena actual, doble campo de contrasena nueva, salida al flujo de recuperacion de Supabase y confirmacion solo tras respuesta real de Supabase.
 - Motivo: una sesion abierta olvidada en el movil no debe bastar para apropiarse de la cuenta.
 
-### Identificacion de la tienda en cabecera
+### Migracion inicial de saldos desde papel
+
+- Estado: **RESUELTO / VALIDADO** el 27 de agosto de 2026 contra el proyecto real `Marcos_Tienda`.
+- Descripcion: trasladar a La Libreta la deuda que cada cliente ya tenia en tickets de papel, sin inventar compras individuales. Ejemplo: Pedrito ya debia 86,40 EUR y se registra como un unico movimiento `Saldo anterior`.
+- Modelo: `tickets.origin` (`purchase` | `opening_balance`), migracion versionada `202608270003_add_movement_origin.sql`. El detalle y el motivo estan en `docs/DECISIONES.md`.
+- Migraciones aplicadas en `Marcos_Tienda`: `202608270002_add_client_reference_fields.sql` y `202608270003_add_movement_origin.sql`. `supabase migration list --linked` confirma 0001, 0002 y 0003 en local y en remoto, y `db push --dry-run` responde `Remote database is up to date`.
+- Validacion remota: 18 comprobaciones en verde sobre datos ficticios, ejecutadas dentro de una transaccion revertida para no dejar residuo. Cubren alta, importe exacto, origen explicito, rechazo de foto, rechazo de segundo saldo anterior vivo, rechazo de importe cero y negativo, integridad cross-store, inmutabilidad del origen, anulacion con trazabilidad, saldo tras anular, re-registro corregido y aislamiento RLS por tienda.
+- Datos previos intactos: 9 tiendas, 13 clientes, 4 tickets y 1 pago antes y despues; los 4 tickets existentes quedaron con `origin = 'purchase'`; deuda total sin cambios en 9.700 centimos; `max(updated_at)` de tickets sin moverse.
+- Pendiente asociado: `npm run test:security` (pgTAP) no se ha podido ejecutar por falta de Docker en la maquina de trabajo. Las pruebas estan escritas y ampliadas a 13 asserts, pero no se dan por pasadas.
+
+### Identificacion de la tienda en cabecera (Fase 3B Subtrabajo 2)
 
 - Estado: resuelto.
 - Incluye: `Covirán · San Miguel de las Dueñas · El Bierzo · León` como subtitulo de la cabecera y alineacion coherente de las acciones de Inicio.
 - Motivo: la aplicacion debe identificar la tienda concreta, no solo el producto.
 
 ## P1 - Proxima iteracion
-
-### Migracion inicial de saldos desde papel
-
-- Descripcion: crear un flujo especifico para trasladar a La Libreta de Marcos las deudas que ya existan antes de empezar a usar la aplicacion. Ejemplo: Pedrito ya debe 86,40 EUR en tickets de papel anteriores y debe registrarse como saldo inicial sin inventar compras nuevas.
-- Utilidad: evita mantener durante semanas dos sistemas paralelos, papel y app, y facilita la implantacion real.
-- Prioridad: P1 alta antes de implantacion definitiva con Marcos.
-- Estado: **implementado en codigo y validado en local, pendiente de aplicar la migracion a `Marcos_Tienda`**. No pasa a resuelto hasta que la migracion este aplicada y verificada contra el proyecto real.
-- Implementado: migracion `supabase/migrations/202608270003_add_movement_origin.sql`, accion `Añadir saldo anterior` en la ficha, representacion diferenciada en historial, anulacion con trazabilidad y pruebas unitarias, de interfaz y pgTAP.
-- Bloqueo para cerrarlo: el entorno de trabajo no tiene Supabase CLI, ni Docker, ni credenciales del proyecto, asi que la migracion no se ha podido aplicar ni se ha podido ejecutar `npm run test:security`.
-- Siguiente paso: aplicar `202608270003_add_movement_origin.sql` a `Marcos_Tienda` (SQL Editor del panel o `supabase db push`), comprobar que los tickets existentes quedan con `origin = 'purchase'` y que los saldos no cambian, y ejecutar las pruebas pgTAP donde haya Docker.
-- Dependencias: probar primero el MVP actual y conocer aproximadamente cuantos clientes/deudas pendientes tiene Marcos cuando vaya a empezar a utilizar la aplicacion.
-- Requisitos futuros: el movimiento debe quedar identificado como `Saldo inicial / deuda anterior a La Libreta`, registrar cliente, importe, fecha de migracion, usuario, nota opcional y origen `saldo inicial`. No se inventan tickets individuales por cada compra antigua de papel: se registra un unico movimiento de saldo inicial por cliente.
-- Integridad: importe en centimos enteros, `amount > 0`, RLS por tienda, sin borrado fisico normal y anulacion con trazabilidad.
-- Alcance tecnico: debe formar parte del calculo de saldo y del historial del cliente. Si requiere cambios de esquema, hacer migracion SQL versionada, aplicarla a `Marcos_Tienda` y verificar RLS/integridad.
 
 ### Identidad visual / logo de la tienda
 

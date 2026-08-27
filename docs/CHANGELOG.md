@@ -1,8 +1,15 @@
 # Changelog
 
-## Pendiente - P1 Migracion inicial de saldos desde papel
+## `2b15faa475ee81a3cc30fd8d196faef52a5b7a2a` - P1 Migracion inicial de saldos desde papel
 
-Base: `05fc2ac211402a1549b25b37bdbca0ac5f38d089`.
+Base: `05fc2ac211402a1549b25b37bdbca0ac5f38d089`. Estado: resuelto y validado contra `Marcos_Tienda`.
+
+### Estado de migraciones en Marcos_Tienda
+
+- `202608270002_add_client_reference_fields.sql` y `202608270003_add_movement_origin.sql` aplicadas en el proyecto real.
+- `supabase migration list --linked` devuelve 0001, 0002 y 0003 presentes en local y remoto.
+- `supabase db push --dry-run` devuelve `Remote database is up to date`.
+- Verificado sobre el proyecto real: 18 comprobaciones en verde con datos ficticios en transaccion revertida, sin residuo. Los 4 tickets previos quedaron en `origin = 'purchase'`, la deuda total sigue en 9.700 centimos y `max(updated_at)` de tickets no se movio.
 
 ### Modelo de datos
 
