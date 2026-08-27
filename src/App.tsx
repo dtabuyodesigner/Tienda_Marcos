@@ -14,6 +14,7 @@ import {
   loadClientHistory,
   loadDashboard,
   removeClientPhoto,
+  sendAccountSummaryEmail,
   signedPhotoUrl,
   updateClientEmail,
   signedPhotoUrls,
@@ -40,6 +41,9 @@ import { summarizeClientMovements } from './lib/summary'
 import { computeAging, isOverdue, OVERDUE_THRESHOLD_DAYS } from './lib/aging'
 import { buildStoreOverview, type StoreOverview } from './lib/overview'
 import { buildAccountView } from './lib/account-view'
+import { buildAccountSummary, type AccountSummary } from '../supabase/functions/_shared/account-summary'
+import { accountPdfFileName, generateAccountPdf } from './lib/account-pdf'
+import { formatAccountWhatsApp, normalizeSpanishPhone, whatsAppShareUrl } from './lib/account-share-text'
 import { emailProblem, normalizeEmail } from './lib/email'
 
 type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings' | 'help' | 'overview'
@@ -386,6 +390,103 @@ function OverdueNotice({ overview, onClient, onAll }: { overview: StoreOverview;
   return <section className="overdue" aria-label="Cuentas pendientes desde hace tiempo"><h2>⚠ {overview.overdueCount === 1 ? 'Una cuenta lleva' : `${overview.overdueCount} cuentas llevan`} más de {OVERDUE_THRESHOLD_DAYS} días pendientes</h2><div className="overdue-list">{visible.map((account) => <button className="overdue-row" key={account.clientId} onClick={() => onClient(account.clientId)}><strong>{account.name}</strong><span>{formatCents(account.balanceCents)} · {ageLabel(account.ageInDays, account.approximate)}</span></button>)}</div>{overview.overdueCount > visible.length && <button type="button" className="text-button" onClick={onAll}>Ver todas</button>}</section>
 }
 
+/**
+ * Compartir la cuenta por email, WhatsApp o PDF.
+ * Los tres canales parten del mismo modelo canonico: no hay tres calculos.
+ */
+function ShareMenu({ summary, clientId, clientEmail, clientPhone, onAddEmail }: { summary: AccountSummary; clientId: string; clientEmail: string | null; clientPhone: string | null; onAddEmail: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function closeOnOutside(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') { setOpen(false); triggerRef.current?.focus() }
+    }
+    document.addEventListener('mousedown', closeOnOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  useEffect(() => { if (open) panelRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus() }, [open])
+
+  async function sendEmail() {
+    if (busy) return
+    setBusy(true)
+    setNotice(null)
+    // Nunca se anuncia "enviado" antes de que el servidor lo confirme.
+    const result = await sendAccountSummaryEmail(clientId)
+    setBusy(false)
+    setOpen(false)
+    setNotice(result.ok
+      ? { tone: 'success', text: `✓ Resumen enviado a ${result.recipient}` }
+      : { tone: 'error', text: result.message })
+  }
+
+  async function downloadPdf() {
+    if (busy) return
+    setBusy(true)
+    setNotice(null)
+    try {
+      const blob = await generateAccountPdf(summary)
+      const fileName = accountPdfFileName(summary)
+      // En movil se ofrece compartir el fichero si el navegador lo soporta; si
+      // no, descarga normal. Nunca se depende solo de Web Share.
+      const shareFiles = typeof File === 'function' ? [new File([blob], fileName, { type: 'application/pdf' })] : []
+      if (shareFiles.length > 0 && typeof navigator.canShare === 'function' && navigator.canShare({ files: shareFiles })) {
+        try {
+          await navigator.share({ files: shareFiles, title: `Cuenta de ${summary.clientName}` })
+          setOpen(false)
+          return
+        } catch {
+          // cancelado o no soportado de verdad: se descarga
+        }
+      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      setOpen(false)
+    } catch {
+      setNotice({ tone: 'error', text: 'No se pudo preparar el PDF. Inténtalo de nuevo.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function openWhatsApp() {
+    const url = whatsAppShareUrl(formatAccountWhatsApp(summary), normalizeSpanishPhone(clientPhone))
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setOpen(false)
+  }
+
+  return <div className="share" ref={containerRef}>
+    <button ref={triggerRef} type="button" className="secondary-action subtle-action share-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Compartir cuenta</button>
+    {open && <div ref={panelRef} className="user-panel share-panel" role="menu" aria-label="Compartir la cuenta">
+      {clientEmail
+        ? <button type="button" role="menuitem" className="user-option" disabled={busy} onClick={() => void sendEmail()}><span>{busy ? 'Enviando...' : 'Enviar por email'}</span><small>{clientEmail}</small></button>
+        : <button type="button" role="menuitem" className="user-option" onClick={() => { setOpen(false); onAddEmail() }}><span>Enviar por email</span><small>Añade un email al cliente para poder enviárselo.</small></button>}
+      <button type="button" role="menuitem" className="user-option" onClick={openWhatsApp}>WhatsApp</button>
+      <button type="button" role="menuitem" className="user-option" disabled={busy} onClick={() => void downloadPdf()}>{busy ? 'Preparando...' : 'Descargar PDF'}</button>
+    </div>}
+    {notice && <p className={notice.tone === 'success' ? 'notice success share-notice' : 'error share-notice'} role={notice.tone === 'success' ? 'status' : 'alert'}>{notice.text}</p>}
+  </div>
+}
+
 function Overview({ overview, onBack, onClient }: { overview: StoreOverview; onBack: () => void; onClient: (clientId: string) => void }) {
   return <FormPage title="Resumen" onBack={onBack}><section className="summary"><h2>Ahora mismo</h2><dl className="summary-grid"><div><dt>Pendiente total</dt><dd>{formatCents(overview.totalPendingCents)}</dd></div><div><dt>Clientes con deuda</dt><dd>{overview.clientsWithDebt}</dd></div><div><dt>Cuentas de más de {OVERDUE_THRESHOLD_DAYS} días</dt><dd>{overview.overdueCount}</dd></div><div><dt>Deuda de más de {OVERDUE_THRESHOLD_DAYS} días</dt><dd>{formatCents(overview.overdueCents)}</dd></div></dl><p className="muted summary-note">La deuda de más de {OVERDUE_THRESHOLD_DAYS} días cuenta solo la parte que lleva ese tiempo sin pagarse, no el saldo entero de esas cuentas.</p></section><section className="summary"><h2>Este mes</h2><dl className="summary-grid"><div><dt>Compras fiadas</dt><dd>{formatCents(overview.monthPurchaseCents)}</dd></div><div><dt>Número de compras</dt><dd>{overview.monthPurchaseCount}</dd></div><div><dt>Cobrado</dt><dd>{formatCents(overview.monthPaymentCents)}</dd></div><div><dt>Número de cobros</dt><dd>{overview.monthPaymentCount}</dd></div></dl><p className="muted summary-note">No cuentan movimientos anulados. Un saldo anterior no es una compra del mes aunque se apuntase este mes.</p></section>{overview.overdueAccounts.length > 0 && <><div className="section-heading"><h2>Cuentas más antiguas</h2></div><div className="overdue-list">{overview.overdueAccounts.slice(0, 5).map((account) => <button className="overdue-row" key={account.clientId} onClick={() => onClient(account.clientId)}><strong>{account.name}</strong><span>{formatCents(account.balanceCents)} · {ageLabel(account.ageInDays, account.approximate)}</span></button>)}</div></>}</FormPage>
 }
@@ -697,7 +798,7 @@ function AccountView({ user, client, photoUrl, onBack, onTicket }: { user: User;
   // poder abrir un movimiento concreto.
   const account = data ? buildAccountView(client, data.tickets, data.payments, new Date()) : null
   const balance = account?.balanceCents ?? ('balance' in client ? client.balance : 0)
-  return <FormPage title="Ver cuenta" onBack={onBack}><section className="account-summary"><div className="account-who"><Avatar name={client.name} photoUrl={photoUrl} /><strong className="client-identity-name">{client.name}</strong></div><strong>{formatCents(balance)}</strong><p>{balance > 0 ? 'Total pendiente' : 'No debe nada'}</p>{account && account.ageInDays !== null && balance > 0 && <p className="account-age">Pendiente desde hace {ageLabel(account.ageInDays, account.ageApproximate)}</p>}{account?.clientEmail && <p className="account-email-line">{account.clientEmail}</p>}</section>{account && <dl className="summary-grid account-totals"><div><dt>Total apuntado</dt><dd>{formatCents(account.totalChargedCents)}</dd></div><div><dt>Total pagado</dt><dd>{formatCents(account.totalPaidCents)}</dd></div></dl>}<MovementList movements={movements} onTicket={onTicket} empty="Todavía no hay movimientos pendientes." /></FormPage>
+  return <FormPage title="Ver cuenta" onBack={onBack}><section className="account-summary"><div className="account-who"><Avatar name={client.name} photoUrl={photoUrl} /><strong className="client-identity-name">{client.name}</strong></div><strong>{formatCents(balance)}</strong><p>{balance > 0 ? 'Total pendiente' : 'No debe nada'}</p>{account && account.ageInDays !== null && balance > 0 && <p className="account-age">Pendiente desde hace {ageLabel(account.ageInDays, account.ageApproximate)}</p>}{account?.clientEmail && <p className="account-email-line">{account.clientEmail}</p>}</section>{account && <ShareMenu summary={buildAccountSummary({ clientName: client.name }, data?.tickets ?? [], data?.payments ?? [], new Date())} clientId={client.id} clientEmail={client.email ?? null} clientPhone={client.phone} onAddEmail={onBack} />}{account && <dl className="summary-grid account-totals"><div><dt>Total apuntado</dt><dd>{formatCents(account.totalChargedCents)}</dd></div><div><dt>Total pagado</dt><dd>{formatCents(account.totalPaidCents)}</dd></div></dl>}<MovementList movements={movements} onTicket={onTicket} empty="Todavía no hay movimientos pendientes." /></FormPage>
 }
 
 function movementsForDisplay(tickets: Ticket[], payments: Payment[]): DisplayMovement[] {

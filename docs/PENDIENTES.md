@@ -53,6 +53,12 @@ Sin bloqueos documentados ahora mismo.
 - Incluye: pantalla `Ayuda` en el menu de usuario entre `Cuenta` y `Cerrar sesión`, con 14 preguntas reales de mostrador en bloques desplegables, y ayudas contextuales en saldo anterior, foto del ticket, anulacion y cambio de contrasena.
 - Es contenido estatico de la aplicacion: se lee sin pedir nada al servidor.
 
+### Compartir la cuenta del cliente: PDF y WhatsApp
+
+- Estado: **RESUELTO / VALIDADO**.
+- Incluye: accion `Compartir cuenta` en `Ver cuenta`, PDF A4 descargable y texto de WhatsApp preparado, los dos derivados del modelo canonico compartible.
+- PDF inspeccionado de verdad con `pdfinfo`/`pdftotext`: A4, acentos correctos, `Saldo anterior` bien etiquetado, importes y antiguedad correctos, cero datos privados.
+
 ### Antiguedad de deuda (FIFO)
 
 - Estado: **RESUELTO / VALIDADO**.
@@ -97,6 +103,13 @@ Sin bloqueos documentados ahora mismo.
 
 ## P1 - Proxima iteracion
 
+### Envio del resumen por email
+
+- Estado: **IMPLEMENTADO Y DESPLEGADO, PENDIENTE DE SECRETO**. No se declara validado de extremo a extremo porque todavia no se ha enviado ningun correo real.
+- Hecho: Edge Function `send-account-summary` desplegada en `Marcos_Tienda`, autorizacion comprobada contra la funcion real (cross-store rechazado, cliente inexistente rechazado, datos inyectados en el cuerpo ignorados, cliente sin email avisado), tabla `account_summary_sends` con RLS, limite de reenvio de 60 segundos y bloqueo de doble envio en la interfaz.
+- **Lo que falta, y es lo unico**: configurar los secretos en Supabase. Con `supabase secrets set BREVO_API_KEY=... ACCOUNT_EMAIL_FROM=... ACCOUNT_EMAIL_FROM_NAME='La Libreta de Marcos'`. El remitente tiene que ser uno verificado en Brevo. Hoy `supabase secrets list` esta vacio.
+- Comprobado que la funcion llega hasta el punto exacto del envio: con un cliente propio con email responde `email_not_configured`, no un fallo anterior.
+
 ### Identidad visual / logo de la tienda
 
 - Descripcion: cuando Marcos facilite una o varias fotografias o referencias visuales reales de la tienda, crear una identidad grafica sencilla para `La Libreta de Marcos`.
@@ -138,32 +151,6 @@ Sin bloqueos documentados ahora mismo.
 - Prioridad: P1.
 - Estado: pendiente.
 - Dependencias: observar si el listado real crece lo suficiente.
-
-### Envio manual del resumen de cuenta al cliente
-
-- Descripcion: permitir a Marcos enviar a un cliente el resumen de su cuenta, a mano, desde `Ver cuenta`.
-- Prioridad: P1.
-- Estado: **pendiente**. El campo de email del cliente y el modelo unico de `Ver cuenta` ya estan hechos; falta la capa de servidor que envia.
-- Lo que falta: capa server-side con Brevo, clave fuera del frontend, destinatario resuelto en servidor a partir del cliente y de la tienda del usuario, disparo siempre manual y posible registro del envio. La arquitectura esta descrita en `docs/DECISIONES.md`.
-- Deliberadamente no hay ningun boton `Enviar por email` mientras no exista ese backend: nada de botones muertos.
-- Dependencias: decidir si la capa server-side es una Edge Function de Supabase o una funcion en Vercel.
-
-### Compartir cuenta por WhatsApp
-
-- Descripcion: permitir compartir un resumen legible de la cuenta del cliente.
-- Utilidad: resolver consultas sin ensenar siempre el movil fisicamente.
-- Prioridad: P1.
-- Estado: pendiente.
-- Dependencias: definir formato y privacidad.
-
-### Resumen/PDF de cuenta
-
-- Descripcion: generar un resumen exportable de movimientos y saldo.
-- Utilidad: soporte para explicaciones y conciliacion.
-- Prioridad: P1.
-- Estado: pendiente.
-- Dependencias: estabilizar primero la vista de cuenta.
-- Relacion: comparte calculo con `Avisos de cuentas pendientes por antiguedad`. La antiguedad de la deuda deberia resolverse una sola vez y alimentar el aviso de Inicio y el resumen.
 
 ### Mejoras que salgan de la prueba real de Marcos
 

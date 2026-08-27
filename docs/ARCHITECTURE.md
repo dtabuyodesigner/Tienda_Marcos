@@ -22,6 +22,10 @@ La antiguedad de la deuda no se guarda: se deriva. `src/lib/aging.ts` imputa los
 
 El panel de Inicio trae en una sola carga los tickets activos y los pagos no anulados de la tienda, y de ahi salen el saldo, la antiguedad de cada cliente y el resumen global. No hay una consulta por cliente.
 
+El modelo canonico de la cuenta compartible vive en `supabase/functions/_shared/account-summary.ts`. No tiene imports a proposito: asi lo cargan igual Vite (pantalla, PDF, WhatsApp) y Deno (Edge Function del email), y el saldo que ve el cliente en pantalla no puede divergir del que le llega por correo. `src/lib/aging.ts` es un reexport suyo.
+
+El envio por email sale de la Edge Function `send-account-summary`, que recibe solo `client_id`, resuelve todo lo demas contra la base de datos con el JWT del usuario y por tanto bajo RLS, y registra el envio en `account_summary_sends`.
+
 ## UX Y Orden
 
 La lista principal ordena clientes con deuda primero. Como criterio secundario usa la fecha de actividad economica mas reciente y, si empata, el nombre en orden alfabetico. En la seleccion de compra se muestran clientes recientes antes del listado completo para reducir pasos en mostrador.

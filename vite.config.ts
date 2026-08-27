@@ -7,6 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // El PDF y sus dependencias se cargan solo cuando alguien pulsa
+        // `Descargar PDF`. Precachearlos multiplicaria por tres lo que se baja
+        // al instalar la aplicacion, y eso lo pagaria cada movil aunque no
+        // genere ningun PDF nunca.
+        globIgnores: ['**/jspdf*', '**/html2canvas*', '**/index.es-*', '**/purify.es-*'],
+      },
       manifest: {
         name: 'La Libreta de Marcos',
         short_name: 'Libreta',

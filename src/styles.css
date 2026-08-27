@@ -110,6 +110,13 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .account-totals { margin: -6px 0 20px; }
 .email-edit { gap: 12px; margin-bottom: 18px; }
 .email-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.share { position: relative; margin: -6px 0 20px; }
+.share-trigger { width: 100%; min-height: 48px; }
+.share-panel { left: 0; right: 0; min-width: 0; }
+.share-panel .user-option { display: grid; gap: 2px; min-height: 56px; }
+.share-panel .user-option small { color: #43474e; font: 13px/18px system-ui, sans-serif; overflow-wrap: anywhere; }
+.share-panel .user-option:disabled { opacity: .6; cursor: wait; }
+.share-notice { margin: 12px 0 0; }
 .heading-action { flex: 0 0 auto; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }

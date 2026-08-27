@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import type { User } from '@supabase/supabase-js'
 import { Login, SUCCESS_NOTICE_MS, Workspace } from './App'
 import type { Client, ClientSummary } from './lib/data'
-import { attachClientPhoto, createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard, removeClientPhoto, updateClientEmail } from './lib/data'
+import { attachClientPhoto, createClient, createOpeningBalance, createPayment, loadClientHistory, loadDashboard, removeClientPhoto, sendAccountSummaryEmail, updateClientEmail } from './lib/data'
 import type { Payment, Ticket } from './lib/data'
 
 const { auth, rpc } = vi.hoisted(() => ({
@@ -19,6 +19,10 @@ const { auth, rpc } = vi.hoisted(() => ({
 }))
 
 vi.mock('./lib/supabase', () => ({ supabase: { auth, rpc } }))
+vi.mock('./lib/account-pdf', () => ({
+  accountPdfFileName: () => 'cuenta-ana-2026-08-27.pdf',
+  generateAccountPdf: vi.fn(async () => new Blob(['%PDF-1.3'], { type: 'application/pdf' })),
+}))
 vi.mock('./lib/data', async (importOriginal) => ({
   ...await importOriginal<typeof import('./lib/data')>(),
   loadDashboard: vi.fn(),
@@ -30,6 +34,7 @@ vi.mock('./lib/data', async (importOriginal) => ({
   attachClientPhoto: vi.fn(),
   removeClientPhoto: vi.fn(),
   updateClientEmail: vi.fn(),
+  sendAccountSummaryEmail: vi.fn(),
   signedPhotoUrls: vi.fn(async () => ({})),
   attachTicketPhoto: vi.fn(),
   signedPhotoUrl: vi.fn(),
@@ -1175,5 +1180,136 @@ describe('email opcional del cliente', () => {
 
     expect(await screen.findByRole('button', { name: 'Añadir email' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^Cobrar/ })).toBeTruthy()
+  })
+})
+
+describe('compartir la cuenta del cliente', () => {
+  const conEmail = () => ({ ...summary('Ana', 1840, 'ana'), email: 'ana@correo.es', phone: '600 11 22 33' })
+
+  async function abrirVerCuenta(cliente: ClientSummary) {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [cliente], total: cliente.balance }))
+    vi.mocked(loadClientHistory).mockResolvedValue(history(cliente, cliente.balance, [ticket({ id: 't1', amount_cents: 1840, created_at: '2026-08-20T10:00:00Z' })]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver cuenta' }))
+    await screen.findByRole('heading', { name: 'Ver cuenta' })
+  }
+
+  async function abrirMenuCompartir(cliente: ClientSummary = conEmail() as ClientSummary) {
+    await abrirVerCuenta(cliente as ClientSummary)
+    const trigger = await screen.findByRole('button', { name: 'Compartir cuenta' })
+    fireEvent.click(trigger)
+    await screen.findByRole('menu', { name: 'Compartir la cuenta' })
+    return trigger
+  }
+
+  it('ofrece una sola accion Compartir cuenta, no tres botones grandes', async () => {
+    await abrirVerCuenta(conEmail() as ClientSummary)
+
+    const trigger = await screen.findByRole('button', { name: 'Compartir cuenta' })
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('menuitem')).toBeNull()
+  })
+
+  it('el menu ofrece email con la direccion del cliente, WhatsApp y PDF', async () => {
+    await abrirMenuCompartir()
+
+    const opciones = screen.getAllByRole('menuitem').map((item) => item.textContent)
+    expect(opciones[0]).toContain('Enviar por email')
+    expect(opciones[0]).toContain('ana@correo.es')
+    expect(opciones[1]).toBe('WhatsApp')
+    expect(opciones[2]).toBe('Descargar PDF')
+  })
+
+  it('sin email explica que hay que anadirlo y lleva a la ficha', async () => {
+    await abrirMenuCompartir({ ...summary('Ana', 1840, 'ana'), email: null } as ClientSummary)
+
+    const opcion = screen.getAllByRole('menuitem')[0]
+    expect(opcion.textContent).toContain('Añade un email al cliente para poder enviárselo.')
+
+    fireEvent.click(opcion)
+    expect(await screen.findByRole('heading', { name: 'Ana' })).toBeTruthy()
+    expect(sendAccountSummaryEmail).not.toHaveBeenCalled()
+  })
+
+  it('envia el resumen y solo dice enviado cuando el servidor lo confirma', async () => {
+    vi.mocked(sendAccountSummaryEmail).mockResolvedValue({ ok: true, recipient: 'ana@correo.es' })
+    await abrirMenuCompartir()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Enviar por email/ }))
+
+    await waitFor(() => expect(sendAccountSummaryEmail).toHaveBeenCalledWith('ana'))
+    expect(await screen.findByText('✓ Resumen enviado a ana@correo.es')).toBeTruthy()
+  })
+
+  it('muestra el motivo en cristiano si el envio falla', async () => {
+    vi.mocked(sendAccountSummaryEmail).mockResolvedValue({ ok: false, code: 'email_not_configured', message: 'Todavía no está configurado el envío de correos. Avisa a quien lleva la aplicación.' })
+    await abrirMenuCompartir()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Enviar por email/ }))
+
+    const aviso = await screen.findByRole('alert')
+    expect(aviso.textContent).toContain('Todavía no está configurado')
+    expect(aviso.textContent).not.toMatch(/500|JWT|payload|status/)
+    expect(screen.queryByText(/Resumen enviado/)).toBeNull()
+  })
+
+  it('no envia dos veces por un doble click', async () => {
+    let resolver: (value: { ok: true; recipient: string }) => void = () => {}
+    vi.mocked(sendAccountSummaryEmail).mockReturnValue(new Promise((resolve) => { resolver = resolve }))
+    await abrirMenuCompartir()
+
+    const opcion = screen.getByRole('menuitem', { name: /Enviar por email/ })
+    fireEvent.click(opcion)
+    fireEvent.click(opcion)
+    fireEvent.click(opcion)
+
+    expect(sendAccountSummaryEmail).toHaveBeenCalledTimes(1)
+    resolver({ ok: true, recipient: 'ana@correo.es' })
+  })
+
+  it('abre WhatsApp con el resumen preparado y sin datos privados', async () => {
+    const abrir = vi.fn()
+    vi.stubGlobal('open', abrir)
+    await abrirMenuCompartir()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'WhatsApp' }))
+
+    expect(abrir).toHaveBeenCalledTimes(1)
+    const url = abrir.mock.calls[0][0] as string
+    expect(url.startsWith('https://wa.me/')).toBe(true)
+    const texto = decodeURIComponent(url.split('text=')[1])
+    expect(texto).toContain('Ana')
+    expect(texto).toContain('18,40')
+    expect(texto).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/)
+    for (const prohibido of ['note', 'nickname', 'store_id', 'photo_path', 'moroso', 'debes pagar']) {
+      expect(texto).not.toContain(prohibido)
+    }
+  })
+
+  it('prepara el PDF al elegir descargar', async () => {
+    const { generateAccountPdf } = await import('./lib/account-pdf')
+    await abrirMenuCompartir()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Descargar PDF' }))
+
+    await waitFor(() => expect(generateAccountPdf).toHaveBeenCalledTimes(1))
+    const summaryPasado = vi.mocked(generateAccountPdf).mock.calls[0][0]
+    expect(summaryPasado.clientName).toBe('Ana')
+    expect(JSON.stringify(summaryPasado)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/)
+  })
+
+  it('el menu se cierra con Escape y al pulsar fuera', async () => {
+    const trigger = await abrirMenuCompartir()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Compartir la cuenta' })).toBeNull())
+    expect(document.activeElement).toBe(trigger)
+
+    fireEvent.click(trigger)
+    await screen.findByRole('menu', { name: 'Compartir la cuenta' })
+    fireEvent.mouseDown(document.body)
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Compartir la cuenta' })).toBeNull())
   })
 })

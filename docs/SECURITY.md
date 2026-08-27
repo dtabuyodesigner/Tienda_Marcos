@@ -52,3 +52,15 @@ update public.store_invites set used_count = 0, used_at = null, used_by = null w
 El SMTP de Auth es Brevo, configurado en el panel de Supabase. Ni la clave SMTP ni ninguna credencial de Brevo estan en el repositorio.
 
 Los correos de Auth (confirmacion de cuenta, recuperacion de contrasena) van dirigidos al duenno de la tienda. El futuro envio de resumenes a clientes es un flujo distinto: no debe salir de Supabase Auth, la clave del proveedor no puede estar en el frontend y el destinatario tiene que resolverse en servidor a partir del cliente y de la tienda del usuario, nunca aceptarse tal cual desde el navegador.
+
+## Envio Del Resumen A Clientes
+
+La Edge Function `send-account-summary` es el unico camino por el que sale un correo dirigido a un cliente.
+
+- El navegador envia solo `client_id`. Email, saldo y movimientos se resuelven en el servidor; nada calculado en el navegador se acepta como verdad.
+- Se exige JWT valido. La funcion usa la clave anonima con ese JWT propagado, de modo que toda lectura pasa por RLS. **No se usa la service role.**
+- Un usuario de otra tienda recibe `not_found`, indistinguible de un cliente inexistente. Comprobado contra la funcion desplegada.
+- La autorizacion se resuelve ANTES que la configuracion, para que un intento cross-store no reciba pistas sobre el estado de los secretos.
+- Secretos server-side: `BREVO_API_KEY`, `ACCOUNT_EMAIL_FROM`, `ACCOUNT_EMAIL_FROM_NAME`. Se configuran con `supabase secrets set` y no aparecen en el repositorio ni en el paquete publicado.
+- No se registran en logs la clave, el JWT, el destinatario ni el cuerpo del correo.
+- `account_summary_sends` deja traza del envio y limita el reenvio inmediato. No guarda el contenido.

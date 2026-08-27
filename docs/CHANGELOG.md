@@ -1,5 +1,37 @@
 # Changelog
 
+## Pendiente - Compartir la cuenta: email, PDF y WhatsApp
+
+Base: `5bb1b3aecd44a38216cda8e65c5669fc4605e3cd`.
+
+### Modelo canonico
+
+- `supabase/functions/_shared/account-summary.ts`: unica implementacion del calculo economico compartible, sin imports para que la carguen igual Vite y Deno. `src/lib/aging.ts` pasa a ser un reexport suyo, asi que el FIFO existe una sola vez.
+
+### Compartir
+
+- Accion `Compartir cuenta` en `Ver cuenta`, con menu de email, WhatsApp y PDF. Accesible, tactil, y se cierra con Escape, pulsando fuera o al elegir.
+- PDF A4 con `jsPDF` cargado bajo demanda, con paginacion y nombre de fichero seguro.
+- WhatsApp con texto preparado por `wa.me`, con o sin telefono. No envia nada solo.
+
+### Email server-side
+
+- Edge Function `send-account-summary` desplegada. El navegador manda solo `client_id`; el destinatario, el saldo y los movimientos se resuelven en el servidor bajo RLS, sin service role.
+- Brevo como proveedor transaccional, con `fetch` nativo y timeout. Secretos server-side, nunca en el frontend.
+- Tabla `account_summary_sends` con RLS: traza del envio y limite de reenvio de 60 segundos.
+- Corregido durante la integracion el orden de comprobaciones: autorizar antes que mirar la configuracion.
+
+### Correcciones
+
+- `supabase/config.toml` usaba la forma antigua de declarar buckets, que hacia fallar cualquier comando del CLI que validase el config entero.
+
+### Validacion
+
+- 257 pruebas en verde.
+- Autorizacion comprobada contra la funcion desplegada: cross-store rechazado.
+- PDF real inspeccionado con `pdfinfo` y `pdftotext`.
+- Envio real de correo: **no realizado**, falta `BREVO_API_KEY`.
+
 ## Pendiente - Antiguedad FIFO, avisos, resumen global y email del cliente
 
 Base: `9f4e2b73e2446dfbb362041b635ac6fb545a6759`.

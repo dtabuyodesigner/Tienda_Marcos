@@ -145,6 +145,42 @@
 - Siempre lo disparara Marcos a mano. Ningun envio automatico.
 - Se valorara registrar cuando se envio, a que email, que cliente y que usuario lo hizo. Sin convertir la aplicacion en un CRM.
 
+## Compartir La Cuenta Del Cliente
+
+- Marcos puede compartir con un cliente el resumen de su cuenta por **email, WhatsApp o PDF**, siempre a mano. No hay ningun envio automatico, ni recordatorios, ni campanas.
+- **Un solo calculo para los cuatro canales.** El modelo canonico vive en `supabase/functions/_shared/account-summary.ts` y lo usan la pantalla, el PDF, el WhatsApp y la Edge Function del email. Ese fichero no tiene NINGUN import, precisamente para que Deno y Vite puedan cargarlo tal cual sin alias ni configuracion de build. `src/lib/aging.ts` es hoy solo un reexport suyo: el FIFO existe una vez, no dos copias que se parecen.
+- El modelo es **compartible por construccion**: no lleva identificadores, ni nota privada, ni apodo, ni rutas de ficheros. Lo que no esta en el tipo no puede escaparse en un correo. Hay pruebas que serializan el modelo, el texto de WhatsApp y el binario del PDF y fallan si aparece cualquiera de esos campos.
+- En la interfaz hay UNA accion, `Compartir cuenta`, que abre un menu con las tres opciones. No se llena la pantalla de tres botones grandes. Se cierra con Escape, pulsando fuera o al elegir.
+- `Saldo anterior` nunca se presenta como compra, y si es el tramo mas antiguo vivo la antiguedad se dice como `al menos X días`.
+- Los movimientos anulados no entran en el resumen compartible: representa la cuenta vigente.
+
+## Envio Del Resumen Por Email
+
+- El envio ocurre **server-side**, en la Edge Function `send-account-summary`. El navegador manda UNICAMENTE `client_id`; cualquier otro campo del cuerpo se ignora.
+- El destinatario, el saldo y los movimientos los resuelve el servidor leyendo la base de datos. **Nunca se acepta como verdad nada calculado por el navegador**, ni el email ni el importe.
+- La funcion usa la clave anonima con el JWT del usuario propagado, asi que todas las lecturas pasan por RLS. Un usuario de la tienda A que adivine el uuid de un cliente de la tienda B recibe cero filas. Encima hay una comprobacion explicita de `store_id`, y se responde `not_found` igual que si el cliente no existiera, para no confirmar por la puerta de atras que ese uuid existe en otra tienda. **No se usa la service role.**
+- El orden de comprobaciones importa: primero se autoriza, despues se mira la configuracion. Si se mirase la configuracion antes, un intento contra un cliente ajeno respondaria `falta configuracion` en vez de `no existe`, dando una pista y ademas haciendo imposible comprobar el aislamiento mientras falte un secreto.
+- Proveedor: **Brevo**, API transaccional (`POST https://api.brevo.com/v3/smtp/email`, cabecera `api-key`). Sin dependencias: `fetch` nativo con timeout. Es un flujo DISTINTO del SMTP de Supabase Auth y no debe mezclarse con el.
+- Secretos server-side necesarios: `BREVO_API_KEY`, `ACCOUNT_EMAIL_FROM` y, opcional, `ACCOUNT_EMAIL_FROM_NAME`. Nunca en el frontend, ni con prefijo `VITE_`, ni en el repositorio.
+- El correo es transaccional: sin marketing, sin promociones, sin tracking, sin newsletter.
+- Nunca se dice `enviado` antes de que el servidor lo confirme.
+
+## Registro De Envios Y Ritmo
+
+- Tabla `account_summary_sends`: quien envio, a que cliente, a que direccion y cuando. **No se guarda el cuerpo del correo ni una copia de los movimientos**: eso ya esta en tickets y pagos, y duplicarlo solo multiplicaria los sitios desde los que se puede filtrar informacion de un cliente.
+- Sirve ademas como limite de ritmo: la funcion no reenvia el mismo resumen al mismo cliente dentro de una ventana de 60 segundos. Reenviar mas tarde sigue siendo legitimo y no se impide.
+- RLS con el mismo criterio que el resto del negocio: cada tienda ve y escribe lo suyo, y el autor debe ser el usuario autenticado. Sin politicas de update ni delete: un registro de envio no se reescribe.
+- Si el registro falla despues de un envio correcto, no se convierte en un fallo de envio: el correo ya salio.
+
+## PDF Y WhatsApp
+
+- PDF con `jsPDF`, cargado con `import()` dinamico dentro de la funcion para que no engorde el arranque de la PWA en el movil: casi nadie descarga un PDF y no tiene sentido que todos paguen su peso al abrir la aplicacion.
+- A4 vertical, con paginacion y cabecera repetida. Sin fotos de tickets, sin elementos de interfaz.
+- Nombre de fichero seguro tipo `cuenta-maria-2026-08-27.pdf`: sin acentos, sin barras, sin `..`.
+- En movil se ofrece `navigator.share` cuando el navegador lo soporta, con descarga normal como respaldo. Nunca se depende solo de Web Share.
+- WhatsApp se abre con el texto ya preparado mediante `wa.me`; no se envia nada solo. Si el cliente tiene telefono valido se preselecciona, y si no, WhatsApp deja elegir destinatario: un telefono raro no bloquea el compartir.
+- El tono es de resumen informativo, no de reclamacion. Hay una prueba que falla si aparecen `debes pagar`, `moroso`, `retraso` o `impago`.
+
 ## Registro Controlado
 
 - El registro no es publico. La Libreta esta en fase privada para Marcos y pruebas: cualquiera que encuentre la URL no debe poder crearse una tienda. Hace falta un codigo de invitacion.
