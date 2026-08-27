@@ -1,5 +1,36 @@
 # Changelog
 
+## Pendiente - Onboarding real validado de extremo a extremo
+
+Base: `7450ae509d6a39a64e9a8c4ae2fed9c842727442`.
+
+### Correo saliente
+
+- SMTP propio de Brevo configurado en el panel y **validado con un alta real**: el correo de confirmacion sale por Brevo y llega a la bandeja.
+- Site URL y Redirect URL correctas: el enlace del correo pasa por Supabase y termina en `https://marcos-tienda.vercel.app` con sesion.
+
+### Alta real de extremo a extremo
+
+Recorrido completo contra produccion y `Marcos_Tienda`, con una invitacion de un solo uso emitida para la ocasion:
+
+- alta con nombre, email, contrasena, tienda y codigo: aceptada, sin sesion inmediata y con aviso de confirmacion;
+- correo entregado por Brevo, enlace seguido hasta el dominio publico;
+- login posterior con sesion y usuario confirmado;
+- una sola tienda y un solo perfil, con rol `owner`;
+- tienda vacia y sin acceso a datos de otras tiendas, comprobado con la sesion real contra la API;
+- `store_invites` no legible ni por anonimo ni por autenticado;
+- reutilizar la invitacion, registrarse sin codigo y con codigo inventado fallan los tres;
+- datos de prueba eliminados despues: mismos recuentos que antes y cero residuos.
+
+### Plantillas de correo
+
+- Anadido `docs/EMAIL_TEMPLATES.md` con asunto y cuerpo en espanol para confirmacion de cuenta y recuperacion de contrasena, mas el criterio de que hacer con el resto de plantillas.
+- Estado: pendiente de pegar en el panel. Hoy el correo llega en ingles.
+
+### Pendientes
+
+- Nuevo P1: `Email del cliente + envio manual de resumen de cuenta`. No implementado.
+
 ## Pendiente - P1 Onboarding controlado y Ayuda
 
 Base: `2d4d3c6ebcd63827efe256f58dcf6e8580fa47d9`.

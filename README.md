@@ -2,7 +2,7 @@
 
 PWA mobile-first para llevar compras fiadas de una tienda pequena: clientes, compras, pagos, fotos opcionales de ticket y trazabilidad de anulaciones.
 
-Estado actual: registro controlado por invitacion y ayuda integrada en marcha. Las migraciones `202608270001` a `202608270005` estan aplicadas en `Marcos_Tienda`. La aplicacion esta desplegada y en prueba manual real.
+Estado actual: registro controlado por invitacion validado de extremo a extremo contra produccion, con correo saliente propio y ayuda integrada. Las migraciones `202608270001` a `202608270005` estan aplicadas en `Marcos_Tienda`. La aplicacion esta desplegada y en prueba manual real.
 
 ## Requisitos
 
@@ -23,7 +23,7 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 ## Flujo operativo
 
 - Alta de cuenta desde la pantalla de acceso, solo con codigo de invitacion. Crea tienda y perfil automaticamente. Ver `docs/SECURITY.md` para emitir una invitacion.
-- Auth exige confirmar el email antes de la primera entrada. Para entregarla a una tienda real hay que configurar SMTP propio en Supabase y permitir el dominio publico en las URLs de redireccion.
+- Auth exige confirmar el email antes de la primera entrada. El correo sale por SMTP propio (Brevo) configurado en el panel de Supabase, y el enlace vuelve al dominio publico. Validado con un alta real de extremo a extremo.
 - `Ayuda` dentro de la aplicacion, en el menu de usuario.
 - Login mediante Supabase Auth.
 - Inicio con total pendiente, clientes ordenados por deuda primero y actividad reciente como criterio secundario.
@@ -96,4 +96,5 @@ Vercel esta conectado a este repositorio y despliega automaticamente: cada push 
 - `docs/CHANGELOG.md`: cambios por fase.
 - `docs/PENDIENTES.md`: inventario vivo P0/P1/P2/fuera de alcance.
 - `docs/PIN_NEXT.md`: siguiente mejora documentada, no implementada.
+- `docs/EMAIL_TEMPLATES.md`: textos en espanol de los correos de Auth, para pegar en el panel de Supabase.
 

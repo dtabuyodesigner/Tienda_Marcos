@@ -46,3 +46,9 @@ Para revocar o reciclar una invitacion:
 update public.store_invites set revoked_at = now() where id = '...';
 update public.store_invites set used_count = 0, used_at = null, used_by = null where id = '...';
 ```
+
+## Correo Saliente
+
+El SMTP de Auth es Brevo, configurado en el panel de Supabase. Ni la clave SMTP ni ninguna credencial de Brevo estan en el repositorio.
+
+Los correos de Auth (confirmacion de cuenta, recuperacion de contrasena) van dirigidos al duenno de la tienda. El futuro envio de resumenes a clientes es un flujo distinto: no debe salir de Supabase Auth, la clave del proveedor no puede estar en el frontend y el destinatario tiene que resolverse en servidor a partir del cliente y de la tienda del usuario, nunca aceptarse tal cual desde el navegador.

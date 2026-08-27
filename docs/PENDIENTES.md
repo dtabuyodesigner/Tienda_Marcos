@@ -36,7 +36,16 @@ Sin bloqueos documentados ahora mismo.
 - Incluye: `Crear mi cuenta` en la pantalla de acceso, alta con nombre, email, contrasena repetida, nombre de tienda y codigo de invitacion; creacion automatica de tienda y perfil con rol `owner`; y aislamiento entre tiendas intacto.
 - Registro no publico: hace falta invitacion de un solo uso, validada y consumida en base de datos. Migracion `202608270005_add_store_invites.sql` aplicada.
 - Validacion remota: 14 comprobaciones en verde y prueba por la API real de Auth, que rechaza el alta sin codigo y con codigo inventado.
-- **Pendiente operativo antes de entregar a Marcos**: `mailer_autoconfirm` esta a false, asi que Auth exige confirmar el email. Para que Marcos reciba ese correo hay que configurar SMTP propio en Supabase (el remitente por defecto tiene un limite muy bajo y no sirve para produccion) y anadir `https://marcos-tienda.vercel.app` a las URLs de redireccion permitidas. Son dos ajustes de panel, no de codigo, y no se han podido hacer desde aqui.
+- **SMTP propio (Brevo): RESUELTO.** Configurado fuera del repositorio y validado con un alta real de extremo a extremo: el correo de confirmacion sale por Brevo y llega a la bandeja.
+- **Site URL y Redirect URL: RESUELTO.** El enlace del correo pasa por Supabase y termina en `https://marcos-tienda.vercel.app` con sesion, comprobado siguiendo la cadena de redirecciones real.
+- **Validacion de extremo a extremo (27 de agosto de 2026)**: alta con invitacion valida, correo entregado por Brevo, enlace confirmado, login posterior con sesion, usuario confirmado, una sola tienda y un solo perfil con rol `owner`, tienda vacia y sin ver datos de otras tiendas. Reutilizar la invitacion, registrarse sin codigo y con codigo inventado fallan los tres. Datos de prueba eliminados despues, sin residuos.
+
+### Plantillas de correo de Auth en espanol
+
+- Estado: **PENDIENTE DE PANEL**. El contenido esta escrito y listo en `docs/EMAIL_TEMPLATES.md`, pero aplicarlo requiere pegarlo en el Dashboard de Supabase y desde aqui no hay acceso de gestion.
+- Comprobado en la prueba real: hoy el correo de confirmacion llega en ingles (`Confirm your email address`).
+- Que hay que hacer: Authentication -> Emails -> Templates, pegar asunto y cuerpo de `Confirm signup` y `Reset password`. Las demas plantillas no se usan en este proyecto y se explica en el documento por que no hace falta tocarlas.
+- No pasa a resuelto hasta que Dani confirme que las ha pegado.
 
 ### Ayuda integrada
 
@@ -154,6 +163,42 @@ Es la parte delicada del pendiente y hay que resolverla antes de escribir interf
 - No contactar automaticamente al cliente en ninguna forma.
 - No enviar WhatsApp, SMS ni email sin una funcionalidad futura explicita, disenada aparte y siempre disparada por Marcos, nunca automatica.
 - Notificacion push o resumen diario al movil de Marcos: solo a estudiar despues de que el aviso dentro de la aplicacion se haya probado en uso real.
+
+### Email del cliente + envio manual de resumen de cuenta
+
+- Descripcion: guardar un email opcional en la ficha del cliente y, mas adelante, permitir a Marcos enviarle manualmente un resumen de su cuenta.
+- Prioridad: P1.
+- Estado: pendiente. No implementar todavia.
+- Dependencia: consolidar antes `Ver cuenta` y decidir un formato unico de resumen.
+
+#### Email del cliente
+
+- Campo opcional, nunca obligatorio. La aplicacion debe funcionar igual si el cliente no tiene email.
+- No pedirlo ni deducirlo automaticamente.
+
+#### Envio manual
+
+- Accion futura desde `Ver cuenta`: `Enviar por email`.
+- Siempre con accion explicita de Marcos. Nada de envios automaticos, recordatorios automaticos ni campanas.
+
+#### Contenido del resumen
+
+- Puede incluir: nombre del cliente, saldo actual, movimientos relevantes, fechas, importes, pagos realizados, importes pendientes y total pendiente.
+- No debe incluir: notas privadas, apodos internos si no son apropiados, metadatos tecnicos ni informacion de otros clientes.
+
+#### Proveedor y seguridad
+
+- Estudiar reutilizar Brevo como proveedor transaccional, pero separado del correo de Auth: son dos flujos distintos y no deben mezclarse.
+- Nunca exponer claves de Brevo en el frontend. El envio tiene que salir de una capa de servidor.
+- Un usuario no debe poder manipular destinatario ni contenido para enviar correo fuera de su tienda.
+
+#### Auditoria minima
+
+- Valorar registrar cuando se envio, a que email, que cliente y que usuario de la tienda lo hizo. Sin convertir la aplicacion en un CRM.
+
+#### Futuro relacionado
+
+- El mismo resumen debe poder reutilizarse para WhatsApp manual, PDF e impresion, sin duplicar la logica de calculo.
 
 ### Compartir cuenta por WhatsApp
 

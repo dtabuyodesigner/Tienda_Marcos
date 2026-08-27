@@ -107,6 +107,14 @@
 - `max_uses` admite mas de un uso, pero `used_at` y `used_by` son singulares y se sobrescribirian. Mientras solo se emitan invitaciones de un uso, la traza es exacta.
 - No hay caducidad ni funcion de revocacion: revocar es un `update` manual sobre `revoked_at`. Deuda consciente.
 
+## Correo Saliente
+
+- Proveedor SMTP de Auth: **Brevo**, configurado en el panel de Supabase, fuera del repositorio. El remitente por defecto de Supabase no sirve para produccion por su limite de envio.
+- Validado con un alta real: el correo de confirmacion sale por Brevo y el enlace termina en `https://marcos-tienda.vercel.app` con sesion.
+- **El correo de Auth y el correo a clientes son dos flujos distintos y deben seguir separados.** Auth manda confirmaciones y recuperaciones de contrasena a Marcos. El futuro resumen de cuenta va dirigido a un cliente de la tienda, con otro contenido, otra responsabilidad y otro riesgo. No se enviara desde Supabase Auth aunque el proveedor acabe siendo el mismo.
+- Cuando exista el envio a clientes: el email del cliente sera opcional, el envio sera siempre manual y disparado por Marcos, y no habra recordatorios automaticos ni campanas sin una funcionalidad futura explicita y decidida aparte.
+- Las plantillas de correo de Auth se editan en el panel, no por codigo. El texto en espanol vive versionado en `docs/EMAIL_TEMPLATES.md` para que pegarlo sea mecanico y quede constancia de que se envia.
+
 ## Verificacion De Email
 
 - Comprobado contra el proyecto real, no supuesto: `mailer_autoconfirm` esta a **false**, asi que Auth exige confirmar el email antes de dar sesion.
