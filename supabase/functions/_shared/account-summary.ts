@@ -171,6 +171,18 @@ function movementLabel(kind: ShareMovementKind): string {
   return kind === 'payment' ? 'Pago' : 'Compra'
 }
 
+/**
+ * Frase de antiguedad para pantalla, PDF, WhatsApp y email.
+ * A los cero dias no se dice "hace 0 dias", que no es castellano: se dice hoy.
+ * Para un saldo anterior la fecha es una cota inferior, asi que se mantiene el
+ * "al menos"; en el caso de hoy eso quedaria artificial y se dice "hoy o antes".
+ */
+export function agingSentence(days: number, approximate: boolean): string {
+  if (days <= 0) return approximate ? 'Pendiente desde hoy o antes' : 'Pendiente desde hoy'
+  const duracion = `${days} ${days === 1 ? 'día' : 'días'}`
+  return approximate ? `Pendiente desde hace al menos ${duracion}` : `Pendiente desde hace ${duracion}`
+}
+
 export function buildAccountSummary(
   input: { clientName: string; storeName?: string; storeLocation?: string },
   tickets: SummaryTicket[],
@@ -207,9 +219,7 @@ export function buildAccountSummary(
   ].sort((a, b) => a.date.split('/').reverse().join('').localeCompare(b.date.split('/').reverse().join('')))
 
   const days = aging.ageInDays
-  const agingLine = days !== null && aging.balance > 0
-    ? `Pendiente desde hace ${aging.approximate ? 'al menos ' : ''}${days} ${days === 1 ? 'día' : 'días'}`
-    : null
+  const agingLine = days !== null && aging.balance > 0 ? agingSentence(days, aging.approximate) : null
 
   return {
     storeName: input.storeName ?? 'La Libreta de Marcos',

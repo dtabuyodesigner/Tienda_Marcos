@@ -1,5 +1,11 @@
 # Changelog
 
+## Pendiente - Ajustes de redaccion
+
+- La nota del `Resumen` de la ficha mostraba comillas invertidas literales en pantalla.
+- Una deuda del mismo dia decia `Pendiente desde hace 0 días`, que no es castellano. Ahora dice `Pendiente desde hoy`, y `Pendiente desde hoy o antes` cuando nace de un saldo anterior, para no perder la semantica de cota inferior sin sonar artificial.
+- La frase vive en el modelo canonico, asi que pantalla, PDF, WhatsApp y email dicen exactamente lo mismo.
+
 ## Pendiente - Diagnostico del envio por email
 
 - La Edge Function devuelve ahora `upstreamStatus` con el codigo HTTP del proveedor de correo cuando el envio falla. Sin ese dato no habia forma de distinguir una clave rechazada de un remitente no verificado sin mirar la clave, que es justo lo que no se puede hacer. Nunca se devuelve la clave ni el cuerpo de la respuesta del proveedor.

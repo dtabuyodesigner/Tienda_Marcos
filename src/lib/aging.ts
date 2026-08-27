@@ -4,6 +4,7 @@
 //
 // Este fichero solo reexporta con los nombres que ya usaba el frontend.
 export {
+  agingSentence,
   computeAging,
   daysBetweenInStoreZone,
   isOverdue,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Payment, Ticket } from './data'
-import { OVERDUE_THRESHOLD_DAYS, computeAging, daysBetweenInStoreZone, isOverdue } from './aging'
+import { agingSentence, OVERDUE_THRESHOLD_DAYS, computeAging, daysBetweenInStoreZone, isOverdue } from './aging'
 
 function ticket(id: string, amount_cents: number, created_at: string, overrides: Partial<Ticket> = {}): Ticket {
   return {
@@ -236,5 +236,37 @@ describe('daysBetweenInStoreZone', () => {
   it('devuelve 0 con fechas futuras, nunca negativo', () => {
     expect(daysBetweenInStoreZone('2026-01-01T10:00:00.000Z', new Date('2025-08-27T10:00:00.000Z'))).toBe(0)
     expect(computeAging([ticket('t1', 1000, '2026-01-01T10:00:00.000Z')], [], NOW).ageInDays).toBe(0)
+  })
+})
+
+describe('frase de antiguedad', () => {
+  it('a los cero dias dice hoy, no "hace 0 dias"', () => {
+    expect(agingSentence(0, false)).toBe('Pendiente desde hoy')
+  })
+
+  it('un dia va en singular', () => {
+    expect(agingSentence(1, false)).toBe('Pendiente desde hace 1 día')
+  })
+
+  it('a partir de dos dias va en plural', () => {
+    expect(agingSentence(2, false)).toBe('Pendiente desde hace 2 días')
+    expect(agingSentence(15, false)).toBe('Pendiente desde hace 15 días')
+  })
+
+  it('el saldo anterior conserva la semantica de cota inferior', () => {
+    expect(agingSentence(15, true)).toBe('Pendiente desde hace al menos 15 días')
+    expect(agingSentence(1, true)).toBe('Pendiente desde hace al menos 1 día')
+  })
+
+  it('para un saldo anterior de hoy evita el "al menos 0 dias" artificial', () => {
+    expect(agingSentence(0, true)).toBe('Pendiente desde hoy o antes')
+    expect(agingSentence(0, true)).not.toContain('0 días')
+  })
+
+  it('nunca dice "hace 0"', () => {
+    for (const aprox of [true, false]) {
+      expect(agingSentence(0, aprox)).not.toContain('hace 0')
+      expect(agingSentence(-3, aprox)).not.toContain('hace')
+    }
   })
 })

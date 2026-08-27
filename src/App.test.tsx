@@ -1313,3 +1313,46 @@ describe('compartir la cuenta del cliente', () => {
     await waitFor(() => expect(screen.queryByRole('menu', { name: 'Compartir la cuenta' })).toBeNull())
   })
 })
+
+describe('ajustes de redaccion', () => {
+  // Reloj congelado: estos casos comparan dias naturales, y una pasada que cruce
+  // la medianoche convertiria "desde hoy" en "hace 1 dia".
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-08-27T10:00:00Z'))
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('la nota del Resumen no muestra backticks literales', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840, [ticket({ id: 't1', amount_cents: 1840 })]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    const nota = await screen.findByText(/Los totales no cuentan movimientos anulados/)
+    expect(nota.textContent).not.toContain('`')
+    expect(nota.textContent).toContain('La última compra no incluye el saldo anterior.')
+  })
+
+  it('una deuda de hoy dice "desde hoy" en Ver cuenta, no "hace 0 días"', async () => {
+    const hoy = new Date().toISOString()
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840, [ticket({ id: 't1', amount_cents: 1840, created_at: hoy })]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver cuenta' }))
+
+    await screen.findByRole('heading', { name: 'Ver cuenta' })
+    expect(screen.getByText('Pendiente desde hoy')).toBeTruthy()
+    expect(screen.queryByText(/hace 0 días/)).toBeNull()
+  })
+
+  it('un saldo anterior de hoy no dice "al menos 0 días"', async () => {
+    const hoy = new Date().toISOString()
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 8640), 8640, [ticket({ id: 'ob', amount_cents: 8640, origin: 'opening_balance', created_at: hoy })]))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver cuenta' }))
+
+    await screen.findByRole('heading', { name: 'Ver cuenta' })
+    expect(screen.getByText('Pendiente desde hoy o antes')).toBeTruthy()
+  })
+})
