@@ -6,8 +6,11 @@ major_version = 15
 [storage]
 file_size_limit = "10MiB"
 
-[[storage.buckets]]
-name = "ticket-photos"
+# El CLI actual indexa los buckets por nombre; la forma antigua de array con
+# campo `name` hacia fallar cualquier comando que valide el config entero.
+[storage.buckets."ticket-photos"]
 public = false
 file_size_limit = "10MiB"
 allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+[functions.send-account-summary]
+verify_jwt = true

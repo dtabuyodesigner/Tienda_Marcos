@@ -95,6 +95,35 @@ export async function attachClientPhoto(user: User, client: Client, file: File):
   return data as Client
 }
 
+export type SendSummaryResult = { ok: true; recipient: string } | { ok: false; code: string; message: string }
+
+/**
+ * Pide a la Edge Function que envie el resumen. El navegador manda SOLO el id
+ * del cliente: el destinatario, el saldo y los movimientos los resuelve el
+ * servidor desde la base de datos. Nada de lo que se calcula aqui viaja como
+ * verdad.
+ */
+export async function sendAccountSummaryEmail(clientId: string): Promise<SendSummaryResult> {
+  const { data, error } = await supabase.functions.invoke('send-account-summary', { body: { client_id: clientId } })
+  if (error) {
+    // Un error HTTP trae el cuerpo dentro del contexto; de ahi sale el mensaje
+    // que entiende una persona, en vez de un codigo de estado.
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const body = await context.json()
+        if (body && typeof body.message === 'string') return { ok: false, code: String(body.code ?? 'send_failed'), message: body.message }
+      } catch {
+        // cuerpo no legible: se cae al mensaje generico
+      }
+    }
+    return { ok: false, code: 'send_failed', message: 'No se pudo enviar el resumen. Inténtalo de nuevo.' }
+  }
+  if (data && data.ok === true && typeof data.recipient === 'string') return { ok: true, recipient: data.recipient }
+  if (data && typeof data.message === 'string') return { ok: false, code: String(data.code ?? 'send_failed'), message: data.message }
+  return { ok: false, code: 'send_failed', message: 'No se pudo enviar el resumen. Inténtalo de nuevo.' }
+}
+
 /** El email es opcional y editable: pasar null lo deja sin email. */
 export async function updateClientEmail(user: User, client: Client, email: string | null): Promise<Client> {
   const storeId = await currentStore(user)
