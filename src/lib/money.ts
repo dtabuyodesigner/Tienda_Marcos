@@ -16,7 +16,10 @@ export function calculateBalance(ticketAmounts: number[], paymentAmounts: number
 
 export type BalanceTicket = { amount_cents: number; status: 'active' | 'voided' }
 export type BalancePayment = { amount_cents: number; voided_at: string | null }
-export type SearchableClient = { name: string }
+export type SearchableClient = { name: string; nickname?: string | null }
+export type OrderableClient = SearchableClient & { balance: number; lastActivityAt?: string | null }
+
+export const HIGH_TICKET_CONFIRMATION_CENTS = 20000
 
 export function calculateActiveBalance(tickets: BalanceTicket[], payments: BalancePayment[]): number {
   return calculateBalance(
@@ -32,5 +35,28 @@ export function canRegisterPayment(balance: number, amountCents: number): boolea
 export function searchClients<T extends SearchableClient>(clients: T[], query: string): T[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('es-ES')
   if (!normalizedQuery) return clients
-  return clients.filter((client) => client.name.toLocaleLowerCase('es-ES').includes(normalizedQuery))
+  return clients.filter((client) => `${client.name} ${client.nickname ?? ''}`.toLocaleLowerCase('es-ES').includes(normalizedQuery))
+}
+
+export function sortClientsForHome<T extends OrderableClient>(clients: T[]): T[] {
+  return [...clients].sort((a, b) => {
+    const debtPriority = Number(b.balance > 0) - Number(a.balance > 0)
+    if (debtPriority !== 0) return debtPriority
+    const activityPriority = timestamp(b.lastActivityAt) - timestamp(a.lastActivityAt)
+    if (activityPriority !== 0) return activityPriority
+    return a.name.localeCompare(b.name, 'es-ES')
+  })
+}
+
+export function recentClients<T extends OrderableClient>(clients: T[], limit = 5): T[] {
+  return sortClientsForHome(clients.filter((client) => client.lastActivityAt)).slice(0, limit)
+}
+
+export function needsHighTicketConfirmation(amountCents: number): boolean {
+  return amountCents > HIGH_TICKET_CONFIRMATION_CENTS
+}
+
+function timestamp(value?: string | null): number {
+  const parsed = Date.parse(value ?? '')
+  return Number.isFinite(parsed) ? parsed : 0
 }

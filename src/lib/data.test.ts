@@ -19,7 +19,7 @@ const { eq, mockSupabase, select, single, update, upload } = vi.hoisted(() => {
 vi.mock('./supabase', () => ({ supabase: mockSupabase }))
 
 function client(id: string, name = id): Client {
-  return { id, store_id: 'store-1', name, phone: null, active: true }
+  return { id, store_id: 'store-1', name, phone: null, nickname: null, note: null, active: true }
 }
 
 function ticket(values: Partial<Ticket> & Pick<Ticket, 'id' | 'client_id' | 'amount_cents' | 'status'>): Ticket {
@@ -71,13 +71,13 @@ describe('data helpers', () => {
       ],
       [
         payment({ id: 'payment-1', client_id: 'client-1', amount_cents: 700 }),
-        payment({ id: 'payment-2', client_id: 'client-1', amount_cents: 400, voided_at: '2026-08-27T10:30:00Z' }),
+        payment({ id: 'payment-2', client_id: 'client-1', amount_cents: 400, created_at: '2026-08-27T10:30:00Z', voided_at: '2026-08-27T10:35:00Z' }),
       ],
     )
 
     expect(summaries).toEqual([
-      expect.objectContaining({ id: 'client-1', balance: 1140 }),
-      expect.objectContaining({ id: 'client-2', balance: 500 }),
+      expect.objectContaining({ id: 'client-1', balance: 1140, lastActivityAt: '2026-08-27T10:30:00Z' }),
+      expect.objectContaining({ id: 'client-2', balance: 500, lastActivityAt: '2026-08-27T10:00:00Z' }),
     ])
   })
 

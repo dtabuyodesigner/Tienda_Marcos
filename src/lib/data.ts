@@ -2,10 +2,11 @@ import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { calculateActiveBalance } from './money'
 
-export type Client = { id: string; store_id: string; name: string; phone: string | null; active: boolean }
+export type Client = { id: string; store_id: string; name: string; phone: string | null; nickname: string | null; note: string | null; active: boolean; created_at?: string; updated_at?: string }
 export type Ticket = { id: string; store_id: string; client_id: string; amount_cents: number; concept: string | null; photo_path: string | null; status: 'active' | 'voided'; created_by: string; created_at: string; voided_at: string | null; voided_by: string | null; void_reason: string | null }
 export type Payment = { id: string; store_id: string; client_id: string; amount_cents: number; created_by: string; created_at: string; voided_at: string | null; voided_by: string | null; void_reason: string | null }
-export type ClientSummary = Client & { balance: number }
+export type ClientSummary = Client & { balance: number; lastActivityAt: string | null }
+export type ClientInput = { name: string; phone: string; nickname?: string; note?: string }
 
 export function summarizeClients(clients: Client[], tickets: Ticket[], payments: Payment[]): ClientSummary[] {
   return clients.map((client) => ({
@@ -14,7 +15,16 @@ export function summarizeClients(clients: Client[], tickets: Ticket[], payments:
       tickets.filter((ticket) => ticket.client_id === client.id),
       payments.filter((payment) => payment.client_id === client.id),
     ),
+    lastActivityAt: latestActivityAt(client.id, tickets, payments),
   }))
+}
+
+function latestActivityAt(clientId: string, tickets: Ticket[], payments: Payment[]): string | null {
+  const dates = [
+    ...tickets.filter((ticket) => ticket.client_id === clientId).map((ticket) => ticket.created_at),
+    ...payments.filter((payment) => payment.client_id === clientId).map((payment) => payment.created_at),
+  ]
+  return dates.sort((a, b) => b.localeCompare(a))[0] ?? null
 }
 
 async function currentStore(user: User): Promise<string> {
@@ -35,9 +45,15 @@ export async function loadDashboard(user: User): Promise<{ clients: ClientSummar
   return { clients: summaries, total: summaries.reduce((sum, client) => sum + Math.max(client.balance, 0), 0) }
 }
 
-export async function createClient(user: User, name: string, phone: string): Promise<Client> {
+export async function createClient(user: User, input: ClientInput): Promise<Client> {
   const storeId = await currentStore(user)
-  const { data, error } = await supabase.from('clients').insert({ store_id: storeId, name: name.trim(), phone: phone.trim() || null }).select().single()
+  const { data, error } = await supabase.from('clients').insert({
+    store_id: storeId,
+    name: input.name.trim(),
+    phone: input.phone.trim() || null,
+    nickname: input.nickname?.trim() || null,
+    note: input.note?.trim() || null,
+  }).select().single()
   if (error) throw error
   return data as Client
 }

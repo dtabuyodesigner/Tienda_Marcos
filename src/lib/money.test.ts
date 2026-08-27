@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { calculateActiveBalance, calculateBalance, canRegisterPayment, formatCents, parseEuroToCents, searchClients } from './money'
+import {
+  calculateActiveBalance,
+  calculateBalance,
+  canRegisterPayment,
+  formatCents,
+  needsHighTicketConfirmation,
+  parseEuroToCents,
+  recentClients,
+  searchClients,
+  sortClientsForHome,
+} from './money'
 
 describe('money helpers', () => {
   it('converts euros to cents without floats', () => {
@@ -54,14 +64,47 @@ describe('money helpers', () => {
     expect(canRegisterPayment(1840, 1841)).toBe(false)
   })
 
-  it('searches clients by name without changing their balances', () => {
+  it('searches clients by name and nickname without changing their balances', () => {
     const clients = [
-      { name: 'Ana', balance: 1840 },
-      { name: 'Marcos Perez', balance: 0 },
-      { name: 'Maria Lopez', balance: 700 },
+      { name: 'Ana', nickname: null, balance: 1840 },
+      { name: 'Marcos Perez', nickname: 'panadero', balance: 0 },
+      { name: 'Maria Lopez', nickname: 'vecina plaza', balance: 700 },
     ]
     expect(searchClients(clients, 'mar').map((client) => client.name)).toEqual(['Marcos Perez', 'Maria Lopez'])
-    expect(searchClients(clients, '  PEREZ  ')).toEqual([{ name: 'Marcos Perez', balance: 0 }])
+    expect(searchClients(clients, '  PEREZ  ')).toEqual([{ name: 'Marcos Perez', nickname: 'panadero', balance: 0 }])
+    expect(searchClients(clients, 'plaza').map((client) => client.name)).toEqual(['Maria Lopez'])
     expect(searchClients(clients, '')).toBe(clients)
+  })
+
+  it('orders clients with debt first, then recent activity, then name', () => {
+    const clients = [
+      { name: 'Cero reciente', balance: 0, lastActivityAt: '2026-08-27T12:00:00Z' },
+      { name: 'Deuda antigua', balance: 500, lastActivityAt: '2026-08-25T12:00:00Z' },
+      { name: 'Deuda reciente', balance: 100, lastActivityAt: '2026-08-27T10:00:00Z' },
+      { name: 'Alfa sin deuda', balance: 0, lastActivityAt: null },
+    ]
+
+    expect(sortClientsForHome(clients).map((client) => client.name)).toEqual([
+      'Deuda reciente',
+      'Deuda antigua',
+      'Cero reciente',
+      'Alfa sin deuda',
+    ])
+  })
+
+  it('shows recent clients from economic activity only', () => {
+    const clients = [
+      { name: 'Sin movimientos', balance: 0, lastActivityAt: null },
+      { name: 'Ayer', balance: 0, lastActivityAt: '2026-08-26T10:00:00Z' },
+      { name: 'Hoy con deuda', balance: 1200, lastActivityAt: '2026-08-27T10:00:00Z' },
+      { name: 'Hoy sin deuda', balance: 0, lastActivityAt: '2026-08-27T11:00:00Z' },
+    ]
+
+    expect(recentClients(clients, 2).map((client) => client.name)).toEqual(['Hoy con deuda', 'Hoy sin deuda'])
+  })
+
+  it('requires confirmation only above the high ticket threshold', () => {
+    expect(needsHighTicketConfirmation(20000)).toBe(false)
+    expect(needsHighTicketConfirmation(20001)).toBe(true)
   })
 })
