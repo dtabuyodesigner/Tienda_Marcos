@@ -56,7 +56,8 @@
 - El criterio secundario es actividad economica reciente; si empata, nombre alfabetico.
 - En `¿A quién se lo apuntamos?`, `+ Nuevo cliente` aparece antes del listado y se muestran clientes recientes.
 - La fila completa del cliente es pulsable para uso tactil.
-- La ficha del cliente concentra `+ Nueva compra`, `Cobrar` cuando hay deuda, `Ver cuenta`, `Ver historial` y `+ Nuevo cliente`.
+- La ficha del cliente concentra sus acciones: `+ Nueva compra`, `Cobrar` cuando hay deuda, `Ver cuenta`, `Ver historial` y `Añadir saldo anterior` cuando procede.
+- Crear un cliente distinto no es una accion del cliente abierto. En la ficha se llama `+ Crear otro cliente` y vive en su propia zona separada por una linea, secundaria respecto a `+ Nueva compra`. Tras el alta se confirma con `✓ <Nombre> creado correctamente` y se puede encadenar otra alta sin volver a Inicio.
 - Si se crea un cliente desde una ficha, cancelar vuelve a la ficha anterior y guardar abre la ficha nueva.
 
 ## UX
@@ -69,7 +70,8 @@
 - La pantalla de cobro no habilita botones hasta conocer la deuda real, para no mostrar errores enganosos mientras carga.
 - En Inicio, `+ Apuntar compra` y `Nuevo cliente` comparten eje derecho: la fila de la seccion usa el mismo canal interior que la tarjeta de total pendiente.
 - La cabecera identifica la tienda concreta y su ubicacion (`Covirán · San Miguel de las Dueñas · El Bierzo · León`) por debajo del nombre de la aplicacion, con jerarquia secundaria y wrap permitido en movil.
-- Las confirmaciones de compra, pago parcial y pago total muestran el saldo actualizado.
+- Las confirmaciones de compra, pago parcial, pago total y alta de cliente son explicitas y nombran al cliente.
+- Toda pantalla que pertenece a un cliente concreto muestra su nombre. `Historial` y `Ver cuenta` lo encabezan con un resumen discreto del saldo (`Deuda actual: XX,XX €` o `No debe nada`). El nombre se toma siempre del cliente seleccionado, nunca de estado propio de la pantalla que pudiera quedar desincronizado.
 - Los estados vacios usan lenguaje natural.
 - Los errores de carga/guardado evitan mostrar falso exito.
 

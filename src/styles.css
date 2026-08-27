@@ -65,6 +65,13 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .compact-section { display: grid; gap: 10px; margin: 18px 0; }
 .compact-section h2 { font-size: 18px; }
 .account-summary strong { display: block; margin-top: 6px; color: #002446; font-size: 42px; line-height: 1.05; }
+.client-identity { display: grid; gap: 4px; margin: -6px 0 18px; }
+.client-identity-name { display: block; color: #002446; font: 700 22px/1.25 system-ui, sans-serif; overflow-wrap: anywhere; }
+.client-identity span { color: #43474e; font: 15px/22px system-ui, sans-serif; }
+.account-summary .client-identity-name { margin: 0; font-size: 22px; line-height: 1.25; }
+/* Crear otro cliente no es una accion del cliente abierto: va en su propia zona. */
+.other-client { padding-top: 16px; margin: 4px 0 6px; border-top: 1px solid #e3e2df; }
+.other-client-action { width: 100%; min-height: 48px; color: #002446; background: #f4f1e8; border: 1px dashed #c7c3b6; font-size: 15px; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }
 .account-action { width: 100%; }

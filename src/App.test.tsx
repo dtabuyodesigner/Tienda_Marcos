@@ -112,7 +112,7 @@ describe('nuevo cliente desde la ficha', () => {
     render(<Workspace user={user} />)
     await openFicha('Ana')
 
-    fireEvent.click(await screen.findByRole('button', { name: '+ Nuevo cliente' }))
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
     fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
     vi.mocked(loadClientHistory).mockResolvedValue(history({ id: 'lucia', name: 'Lucía' } as Client, 0))
     fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
@@ -126,7 +126,7 @@ describe('nuevo cliente desde la ficha', () => {
     render(<Workspace user={user} />)
     await openFicha('Ana')
 
-    fireEvent.click(await screen.findByRole('button', { name: '+ Nuevo cliente' }))
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
     expect(await screen.findByRole('heading', { name: 'Nuevo cliente' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '← Volver' }))
 
@@ -491,5 +491,83 @@ describe('control de usuario de la cabecera', () => {
     expect(document.activeElement).toBe(cuenta)
     fireEvent.keyDown(menu, { key: 'ArrowUp' })
     expect(document.activeElement).toBe(salir)
+  })
+})
+
+describe('identidad del cliente en sus pantallas', () => {
+  async function abrir(nombreBoton: string, balance: number, tickets: Ticket[] = []) {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', balance), balance, tickets))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+    fireEvent.click(await screen.findByRole('button', { name: nombreBoton }))
+  }
+
+  it('Historial identifica al cliente y muestra su deuda actual', async () => {
+    await abrir('Ver historial', 1840, [ticket({ id: 't-1', amount_cents: 1840 })])
+
+    expect(await screen.findByRole('heading', { name: 'Historial' })).toBeTruthy()
+    expect(screen.getByText('Ana')).toBeTruthy()
+    expect(await screen.findByText(/Deuda actual: .*18,40/)).toBeTruthy()
+  })
+
+  it('Historial dice No debe nada cuando el saldo es cero', async () => {
+    await abrir('Ver historial', 0)
+
+    await screen.findByRole('heading', { name: 'Historial' })
+    expect(await screen.findByText('No debe nada')).toBeTruthy()
+    expect(screen.queryByText(/Deuda actual/)).toBeNull()
+  })
+
+  it('Ver cuenta muestra el nombre del cliente de forma visible', async () => {
+    await abrir('Ver cuenta', 1840, [ticket({ id: 't-1', amount_cents: 1840 })])
+
+    await screen.findByRole('heading', { name: 'Ver cuenta' })
+    const nombre = await screen.findByText('Ana')
+    expect(nombre.className).toContain('client-identity-name')
+  })
+
+  it('el nombre viene del cliente seleccionado, no de estado propio', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue({ clients: [summary('Ana', 1840), summary('Bruno', 500)], total: 2340, supportsOpeningBalance: true, displayName: 'Marcos' })
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Bruno', 500), 500))
+    render(<Workspace user={user} />)
+    await openFicha('Bruno')
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver historial' }))
+
+    await screen.findByRole('heading', { name: 'Historial' })
+    expect(screen.getByText('Bruno')).toBeTruthy()
+    expect(screen.queryByText('Ana')).toBeNull()
+  })
+})
+
+describe('crear otro cliente desde la ficha', () => {
+  it('separa la accion de las acciones del cliente abierto', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    const crear = await screen.findByRole('button', { name: '+ Crear otro cliente' })
+    expect(screen.queryByRole('button', { name: '+ Nuevo cliente' })).toBeNull()
+    expect(crear.closest('.secondary-actions')).toBeNull()
+    expect(crear.closest('.other-client')).not.toBeNull()
+    expect(crear.className).not.toContain('primary-action')
+  })
+
+  it('confirma el alta y permite crear otro sin volver a Inicio', async () => {
+    vi.mocked(loadClientHistory).mockResolvedValue(history(summary('Ana', 1840), 1840))
+    vi.mocked(createClient).mockResolvedValue({ id: 'lucia', store_id: 'store-1', name: 'Lucía', phone: null, nickname: null, note: null, active: true })
+    render(<Workspace user={user} />)
+    await openFicha('Ana')
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    fireEvent.change(await screen.findByLabelText(/Nombre/), { target: { value: 'Lucía' } })
+    vi.mocked(loadClientHistory).mockResolvedValue(history({ id: 'lucia', name: 'Lucía' } as Client, 0))
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cliente' }))
+
+    expect(await screen.findByText('✓ Lucía creado correctamente')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Lucía' })).toBeTruthy()
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Crear otro cliente' }))
+    expect(await screen.findByRole('heading', { name: 'Nuevo cliente' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Clientes' })).toBeNull()
   })
 })
