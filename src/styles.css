@@ -118,6 +118,16 @@ input:focus { outline: 3px solid #d3e3ff; border-color: #426087; }
 .share-panel .user-option small { color: #43474e; font: 13px/18px system-ui, sans-serif; overflow-wrap: anywhere; }
 .share-panel .user-option:disabled { opacity: .6; cursor: wait; }
 .share-notice { margin: 12px 0 0; }
+.filter { display: flex; gap: 8px; margin: 0 0 12px; }
+.filter-option { flex: 1 1 0; min-height: 44px; padding: 8px 12px; border: 1px solid #d6d8d0; background: #f8f9f6; color: #43474e; font: 600 15px/20px system-ui, sans-serif; }
+.filter-active { background: #002446; border-color: #002446; color: #fff; }
+.lock-shell { background: #e9f0e9; }
+.pin-settings { margin: 26px 0 0; padding-top: 20px; border-top: 1px solid #e3e2df; display: grid; gap: 12px; }
+.pin-settings h2 { font-size: 19px; }
+.pin-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pin-actions .subtle-action { flex: 1 1 auto; }
+.pin-timeout { display: grid; gap: 7px; }
+.pin-timeout select { min-height: 48px; padding: 12px; border: 2px solid #c3c6cf; border-radius: 8px; background: #fff; color: #1b1c1a; font: 16px/24px system-ui, sans-serif; }
 .heading-action { flex: 0 0 auto; }
 .account-field { display: grid; gap: 8px; padding: 20px; margin-bottom: 22px; border-radius: 12px; background: #f4f1e8; }
 .account-email { color: #002446; font: 600 19px/1.4 system-ui, sans-serif; overflow-wrap: anywhere; }

@@ -1356,3 +1356,59 @@ describe('ajustes de redaccion', () => {
     expect(screen.getByText('Pendiente desde hoy o antes')).toBeTruthy()
   })
 })
+
+describe('filtro Con deuda / Todos', () => {
+  const conYSin = () => dashboard({
+    clients: [summary('Ana', 1840, 'ana'), summary('Bruno', 0, 'bruno'), summary('Cris', 500, 'cris')],
+    total: 2340,
+  })
+
+  it('por defecto muestra todos, con los contadores de cada opcion', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conYSin())
+    render(<Workspace user={user} />)
+
+    expect(await screen.findByRole('button', { name: 'Todos (3)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Con deuda (2)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Todos (3)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: /Bruno/ })).toBeTruthy()
+  })
+
+  it('Con deuda deja fuera a quien no debe nada', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conYSin())
+    render(<Workspace user={user} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Con deuda (2)' }))
+
+    expect(screen.getByRole('button', { name: /Ana/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Cris/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Bruno/ })).toBeNull()
+  })
+
+  it('si busca a alguien sin deuda con el filtro puesto, explica por que no sale', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conYSin())
+    render(<Workspace user={user} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Con deuda (2)' }))
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por nombre/), { target: { value: 'Bruno' } })
+
+    expect(screen.getByText('No aparece porque no tiene deuda.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Ver todos' }))
+    expect(screen.getByRole('button', { name: /Bruno/ })).toBeTruthy()
+  })
+
+  it('la busqueda sigue funcionando dentro del filtro activo', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(conYSin())
+    render(<Workspace user={user} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Con deuda (2)' }))
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por nombre/), { target: { value: 'Ana' } })
+
+    expect(screen.getByRole('button', { name: /Ana/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Cris/ })).toBeNull()
+  })
+
+  it('un cliente que queda a cero desaparece de Con deuda', async () => {
+    vi.mocked(loadDashboard).mockResolvedValue(dashboard({ clients: [summary('Ana', 0, 'ana')], total: 0 }))
+    render(<Workspace user={user} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Con deuda (0)' }))
+
+    expect(screen.queryByRole('button', { name: /Ana/ })).toBeNull()
+  })
+})

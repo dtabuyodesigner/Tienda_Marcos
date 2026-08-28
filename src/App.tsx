@@ -45,6 +45,9 @@ import { buildAccountSummary, type AccountSummary } from '../supabase/functions/
 import { accountPdfFileName, generateAccountPdf } from './lib/account-pdf'
 import { formatAccountWhatsApp, normalizeSpanishPhone, whatsAppShareUrl } from './lib/account-share-text'
 import { emailProblem, normalizeEmail } from './lib/email'
+import { createPinRecord, lockoutDelayMs, PIN_MAX_LENGTH, PIN_MIN_LENGTH, pinProblem, verifyPin } from './lib/pin'
+import { LOCK_OPTIONS, lockOptionLabel, nextCheckDelayMs, shouldLock, type LockMinutes } from './lib/lock'
+import { clearLockConfig, readLockConfig, writeLockConfig, type LockConfig } from './lib/lock-storage'
 
 type View = 'home' | 'new-client' | 'choose-client' | 'purchase' | 'client' | 'ticket' | 'charge' | 'opening-balance' | 'history' | 'account' | 'settings' | 'help' | 'overview'
 type Notice = { tone: 'success' | 'error'; title?: string; message: string }
@@ -69,7 +72,86 @@ export function App() {
 
   if (loading) return <main className="shell"><p>Cargando sesión...</p></main>
   if (recoveringPassword && session) return <ResetPassword onDone={() => setRecoveringPassword(false)} />
-  return session ? <Workspace user={session.user} /> : <Login />
+  return session ? <LockGate user={session.user} /> : <Login />
+}
+
+/**
+ * Bloqueo local de conveniencia. Tapa la interfaz entera; NO cierra la sesion de
+ * Supabase ni sustituye a la contrasena: la seguridad real de la cuenta sigue
+ * siendo Auth. Solo evita que quien coja el movil desbloqueado vea los fiados.
+ */
+export function LockGate({ user }: { user: User }) {
+  const [config, setConfig] = useState<LockConfig>(() => readLockConfig())
+  // Al arrancar o recargar no sabemos cuando fue la ultima actividad: si hay PIN,
+  // se bloquea. Es el lado seguro y es lo que se espera detras de un mostrador.
+  const [locked, setLocked] = useState(() => Boolean(config.pin) && shouldLock({ enabled: true, minutes: config.minutes, lastActiveAt: config.lastActiveAt }, Date.now()))
+  const armed = Boolean(config.pin) && config.minutes > 0
+
+  useEffect(() => {
+    if (!armed || locked) return
+    function marcar() {
+      const now = Date.now()
+      setConfig((current) => {
+        const next = { ...current, lastActiveAt: now }
+        writeLockConfig(next)
+        return next
+      })
+    }
+    // Solo dos eventos: cubren dedo y teclado sin escuchar medio navegador.
+    window.addEventListener('pointerdown', marcar, { passive: true })
+    window.addEventListener('keydown', marcar)
+    return () => {
+      window.removeEventListener('pointerdown', marcar)
+      window.removeEventListener('keydown', marcar)
+    }
+  }, [armed, locked])
+
+  useEffect(() => {
+    if (!armed || locked) return
+    // Se decide por marca de tiempo, no por temporizador: en segundo plano los
+    // setTimeout se congelan y al volver hay que mirar el reloj de verdad.
+    const estado = { enabled: true, minutes: config.minutes, lastActiveAt: config.lastActiveAt }
+    function revisar() {
+      if (shouldLock(estado, Date.now())) setLocked(true)
+    }
+    const timer = window.setInterval(revisar, Math.max(1000, nextCheckDelayMs(estado, Date.now())))
+    document.addEventListener('visibilitychange', revisar)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', revisar)
+    }
+  }, [armed, locked, config.minutes, config.lastActiveAt])
+
+  function applyConfig(next: LockConfig) {
+    setConfig(next)
+    writeLockConfig(next)
+  }
+
+  if (locked && config.pin) return <LockScreen record={config.pin} onUnlock={() => { applyConfig({ ...config, lastActiveAt: Date.now() }); setLocked(false) }} />
+  return <Workspace user={user} config={config} onConfigChange={applyConfig} onLock={() => setLocked(true)} />
+}
+
+function LockScreen({ record, onUnlock }: { record: NonNullable<LockConfig['pin']>; onUnlock: () => void }) {
+  const [pin, setPin] = useState('')
+  const [failed, setFailed] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const espera = lockoutDelayMs(failed)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (busy || espera > 0) return
+    setBusy(true)
+    setError('')
+    const ok = await verifyPin(pin, record)
+    setBusy(false)
+    if (ok) { onUnlock(); return }
+    setPin('')
+    setFailed(failed + 1)
+    setError('Ese PIN no es correcto.')
+  }
+
+  return <main className="shell lock-shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Introduce tu PIN</h1><form onSubmit={submit}><label>PIN<input type="password" inputMode="numeric" autoComplete="off" autoFocus maxLength={PIN_MAX_LENGTH} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))} /></label>{error && <p className="error" role="alert">{error}</p>}{espera > 0 && <p className="error" role="alert">Has fallado varias veces. Espera {Math.ceil(espera / 1000)} segundos.</p>}<button disabled={busy || espera > 0 || pin.length < PIN_MIN_LENGTH}>{busy ? 'Comprobando...' : 'Desbloquear'}</button><button type="button" className="text-button" onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button></form></section></main>
 }
 
 export function Login() {
@@ -194,7 +276,7 @@ function ResetPassword({ onDone }: { onDone: () => void }) {
   return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Nueva contraseña</h1><form onSubmit={submit}><label>Nueva contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : 'Guardar contraseña'}</button></form></section></main>
 }
 
-export function Workspace({ user }: { user: User }) {
+export function Workspace({ user, config, onConfigChange, onLock }: { user: User; config?: LockConfig; onConfigChange?: (next: LockConfig) => void; onLock?: () => void }) {
   const [view, setView] = useState<View>('home')
   const [clients, setClients] = useState<ClientSummary[]>([])
   const [total, setTotal] = useState(0)
@@ -315,7 +397,7 @@ export function Workspace({ user }: { user: User }) {
   }
 
   if (refreshing && clients.length === 0) return <main className="shell"><p>Cargando tu libreta...</p></main>
-  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><img className="brand-logo" src="/logo-header.webp" alt="La Libreta de Marcos" /></button><UserMenu name={accountDisplayName(displayName, user.email)} onOverview={() => go('overview')} onAccount={() => go('settings')} onHelp={() => go('help')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} photoUrls={photoUrls} overview={overview} onClientById={(id) => { const found = clients.find((client) => client.id === id); if (found) openClient(found) }} onOverview={() => go('overview')} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} canAddPhoto={supportsClientPhoto} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase, photoFailed) => { setSelectedClient(client); setNotice(photoFailed ? { tone: 'error', title: `${client.name} creado, pero la foto no se guardó`, message: 'Puedes añadirla desde su ficha.' } : { tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} photoUrls={photoUrls} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} canManagePhoto={supportsClientPhoto} photoUrl={photoUrls[selectedClient.id]} onClientChanged={finishClientChange} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} onBack={() => go('home')} />}{view === 'help' && <Help onBack={() => go('home')} />}{view === 'overview' && <Overview overview={overview} onBack={() => go('home')} onClient={(id) => { const found = clients.find((client) => client.id === id); if (found) openClient(found) }} />}</div></main>
+  return <main className="app-shell"><header className="topbar"><div className="topbar-row"><button className="brand-button" onClick={() => go('home')}><img className="brand-logo" src="/logo-header.webp" alt="La Libreta de Marcos" /></button><UserMenu name={accountDisplayName(displayName, user.email)} onOverview={() => go('overview')} onAccount={() => go('settings')} onHelp={() => go('help')} onSignOut={() => void supabase.auth.signOut()} /></div><span className="brand-place">Covirán · San Miguel de las Dueñas · El Bierzo · León</span></header><div className="content">{notice && <div className={`notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.title && <strong>{notice.title}</strong>}<span>{notice.message}</span></div>}{view === 'home' && <Home clients={clients} total={total} busy={refreshing} photoUrls={photoUrls} overview={overview} onClientById={(id) => { const found = clients.find((client) => client.id === id); if (found) openClient(found) }} onOverview={() => go('overview')} onClient={openClient} onNew={() => openNewClient('home')} onBuy={() => go('choose-client')} />}{view === 'new-client' && <NewClient user={user} canAddPhoto={supportsClientPhoto} allowContinue={newClientOrigin !== 'client'} onBack={() => go(newClientOrigin === 'client' && selectedClient ? 'client' : 'home')} onCreated={(client, continuePurchase, photoFailed) => { setSelectedClient(client); setNotice(photoFailed ? { tone: 'error', title: `${client.name} creado, pero la foto no se guardó`, message: 'Puedes añadirla desde su ficha.' } : { tone: 'success', title: `✓ ${client.name} creado correctamente`, message: 'Ya está en tu libreta.' }); void refresh({ keepNotice: true }); setView(continuePurchase ? 'purchase' : 'client') }} />}{view === 'choose-client' && <ChooseClient clients={clients} photoUrls={photoUrls} onBack={() => go('home')} onClient={(client) => { setSelectedClient(client); go('purchase') }} onNew={() => openNewClient('home')} />}{view === 'purchase' && selectedClient && <Purchase user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('choose-client')} onSaved={(ticket) => finishPurchase(ticket, selectedClient)} />}{view === 'client' && selectedClient && <ClientPage user={user} client={selectedClient} canAddOpeningBalance={supportsOpeningBalance} canManagePhoto={supportsClientPhoto} photoUrl={photoUrls[selectedClient.id]} onClientChanged={finishClientChange} onBack={() => go('home')} onBuy={() => go('purchase')} onCharge={() => go('charge')} onNewClient={() => openNewClient('client')} onOpeningBalance={() => go('opening-balance')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} onHistory={() => go('history')} onAccount={() => go('account')} />}{view === 'opening-balance' && selectedClient && <OpeningBalance user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onSaved={(addedCents) => finishOpeningBalance(selectedClient, addedCents)} />}{view === 'ticket' && selectedTicket && <TicketPage user={user} ticket={selectedTicket} onBack={() => go('client')} onChanged={() => { void refresh(); go('client') }} />}{view === 'charge' && selectedClient && <Charge user={user} client={selectedClient} onBack={() => go('client')} onPaid={(paidCents) => finishPayment(selectedClient, paidCents)} />}{view === 'history' && selectedClient && <History user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'account' && selectedClient && <AccountView user={user} client={selectedClient} photoUrl={photoUrls[selectedClient.id]} onBack={() => go('client')} onTicket={(ticket) => { setSelectedTicket(ticket); go('ticket') }} />}{view === 'settings' && <Settings user={user} config={config} onConfigChange={onConfigChange} onLock={onLock} onBack={() => go('home')} />}{view === 'help' && <Help onBack={() => go('home')} />}{view === 'overview' && <Overview overview={overview} onBack={() => go('home')} onClient={(id) => { const found = clients.find((client) => client.id === id); if (found) openClient(found) }} />}</div></main>
 }
 
 /**
@@ -493,8 +575,16 @@ function Overview({ overview, onBack, onClient }: { overview: StoreOverview; onB
 
 function Home({ clients, total, busy, photoUrls, overview, onClient, onClientById, onOverview, onNew, onBuy }: { clients: ClientSummary[]; total: number; busy: boolean; photoUrls: Record<string, string>; overview: StoreOverview; onClient: (client: ClientSummary) => void; onClientById: (clientId: string) => void; onOverview: () => void; onNew: () => void; onBuy: () => void }) {
   const [query, setQuery] = useState('')
-  const visible = searchClients(sortClientsForHome(clients), query)
-  return <><section className="hero"><div><span className="label">Pendiente de cobrar</span><strong>{formatCents(total)}</strong></div><button className="primary-action" onClick={onBuy}>+ Apuntar compra</button></section><OverdueNotice overview={overview} onClient={onClientById} onAll={onOverview} /><div className="section-heading home-heading"><h2>Clientes</h2><button className="secondary-action small-action" onClick={onNew}>Nuevo cliente</button></div><input className="search" placeholder="Buscar por nombre o apodo" value={query} onChange={(event) => setQuery(event.target.value)} />{busy ? <p className="muted">Actualizando...</p> : <div className="client-list">{visible.map((client) => <ClientRow client={client} photoUrl={photoUrls[client.id]} key={client.id} onClick={() => onClient(client)} />)}{clients.length === 0 && <div className="empty"><strong>Todavía no tienes clientes.</strong><span>Crea el primero o apunta una compra.</span></div>}{clients.length > 0 && visible.length === 0 && <p className="empty">No hay clientes que coincidan.</p>}</div>}</>
+  // Por defecto se siguen viendo todos: es el comportamiento que ya conocia
+  // Marcos, y esconderle clientes sin avisar seria la sorpresa cara. El filtro
+  // es una ayuda opcional cuando la lista crezca.
+  const [onlyDebt, setOnlyDebt] = useState(false)
+  const ordered = sortClientsForHome(clients)
+  const withDebt = ordered.filter((client) => client.balance > 0)
+  const visible = searchClients(onlyDebt ? withDebt : ordered, query)
+  // Si busca a alguien que si existe pero esta filtrado, se le dice por que.
+  const hiddenByFilter = onlyDebt && query.trim().length > 0 && searchClients(ordered, query).length > visible.length
+  return <><section className="hero"><div><span className="label">Pendiente de cobrar</span><strong>{formatCents(total)}</strong></div><button className="primary-action" onClick={onBuy}>+ Apuntar compra</button></section><OverdueNotice overview={overview} onClient={onClientById} onAll={onOverview} /><div className="section-heading home-heading"><h2>Clientes</h2><button className="secondary-action small-action" onClick={onNew}>Nuevo cliente</button></div><div className="filter" role="group" aria-label="Filtrar clientes"><button type="button" className={onlyDebt ? 'filter-option' : 'filter-option filter-active'} aria-pressed={!onlyDebt} onClick={() => setOnlyDebt(false)}>Todos ({ordered.length})</button><button type="button" className={onlyDebt ? 'filter-option filter-active' : 'filter-option'} aria-pressed={onlyDebt} onClick={() => setOnlyDebt(true)}>Con deuda ({withDebt.length})</button></div><input className="search" placeholder="Buscar por nombre o apodo" value={query} onChange={(event) => setQuery(event.target.value)} />{busy ? <p className="muted">Actualizando...</p> : <div className="client-list">{visible.map((client) => <ClientRow client={client} photoUrl={photoUrls[client.id]} key={client.id} onClick={() => onClient(client)} />)}{clients.length === 0 && <div className="empty"><strong>Todavía no tienes clientes.</strong><span>Crea el primero o apunta una compra.</span></div>}{hiddenByFilter && <p className="empty"><strong>No aparece porque no tiene deuda.</strong><button type="button" className="text-button" onClick={() => setOnlyDebt(false)}>Ver todos</button></p>}{clients.length > 0 && visible.length === 0 && !hiddenByFilter && <p className="empty">No hay clientes que coincidan.</p>}</div>}</>
 }
 
 /**
@@ -809,7 +899,7 @@ function MovementList({ movements, onTicket, empty = 'Todavía no hay movimiento
   return <div className="history-list">{movements.map((movement) => movement.kind === 'ticket' ? <button className="movement" key={movement.id} onClick={() => onTicket(movement)}><span><b>{movementHeadline(movement)}</b><small>{movementDetail(movement, { withStatus: true })}</small></span><strong className={movement.status === 'voided' ? 'muted' : 'debt'}>{formatCents(movement.amount_cents)}</strong></button> : <div className="movement payment" key={movement.id}><span><b>{formatDateTime(movement.created_at)}</b><small>Pago · {movement.voided_at ? 'Anulado' : 'Activo'}</small></span><strong className={movement.voided_at ? 'muted' : 'paid'}>- {formatCents(movement.amount_cents)}</strong></div>)}{movements.length === 0 && <p className="empty">{empty}</p>}</div>
 }
 
-function Settings({ user, onBack }: { user: User; onBack: () => void }) {
+function Settings({ user, config, onConfigChange, onLock, onBack }: { user: User; config?: LockConfig; onConfigChange?: (next: LockConfig) => void; onLock?: () => void; onBack: () => void }) {
   const [stage, setStage] = useState<'idle' | 'reauth' | 'change'>('idle')
   const [recovering, setRecovering] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -856,7 +946,48 @@ function Settings({ user, onBack }: { user: User; onBack: () => void }) {
 
   if (recovering) return <FormPage title="Recuperar contraseña" onBack={() => setRecovering(false)}><p className="muted">Te enviamos un enlace a tu email para crear una contraseña nueva.</p><ForgotPasswordForm initialEmail={user.email ?? ''} /></FormPage>
 
-  return <FormPage title="Cuenta" onBack={onBack}><section className="account-field"><span className="label">Email de acceso</span><strong className="account-email">{user.email}</strong></section>{message && <p className="notice success" role="status">{message}</p>}{stage === 'idle' && <button type="button" className="secondary-action subtle-action account-action" onClick={() => { setMessage(''); goToStage('reauth') }}>Cambiar contraseña</button>}{stage === 'reauth' && <form onSubmit={confirmIdentity}><p className="muted">Por seguridad, confirma tu contraseña actual antes de cambiarla.</p><label>Contraseña actual<input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy || currentPassword.length === 0}>{busy ? 'Comprobando...' : 'Continuar'}</button><button type="button" className="text-button" onClick={() => setRecovering(true)}>He olvidado mi contraseña</button><button type="button" className="text-button" onClick={() => goToStage('idle')}>Cancelar</button></form>}{stage === 'change' && <form onSubmit={savePassword}><label>Nueva contraseña<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><label>Repetir nueva contraseña<input type="password" autoComplete="new-password" value={repeatedPassword} onChange={(event) => setRepeatedPassword(event.target.value)} required /></label><p className="muted">Al menos {MIN_PASSWORD_LENGTH} caracteres, con letras y números.</p>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : 'Guardar nueva contraseña'}</button><button type="button" className="text-button" onClick={() => goToStage('idle')}>Cancelar</button></form>}<button type="button" className="danger-action account-logout" onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button></FormPage>
+  return <FormPage title="Cuenta" onBack={onBack}><section className="account-field"><span className="label">Email de acceso</span><strong className="account-email">{user.email}</strong></section>{message && <p className="notice success" role="status">{message}</p>}{stage === 'idle' && <button type="button" className="secondary-action subtle-action account-action" onClick={() => { setMessage(''); goToStage('reauth') }}>Cambiar contraseña</button>}{stage === 'reauth' && <form onSubmit={confirmIdentity}><p className="muted">Por seguridad, confirma tu contraseña actual antes de cambiarla.</p><label>Contraseña actual<input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy || currentPassword.length === 0}>{busy ? 'Comprobando...' : 'Continuar'}</button><button type="button" className="text-button" onClick={() => setRecovering(true)}>He olvidado mi contraseña</button><button type="button" className="text-button" onClick={() => goToStage('idle')}>Cancelar</button></form>}{stage === 'change' && <form onSubmit={savePassword}><label>Nueva contraseña<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><label>Repetir nueva contraseña<input type="password" autoComplete="new-password" value={repeatedPassword} onChange={(event) => setRepeatedPassword(event.target.value)} required /></label><p className="muted">Al menos {MIN_PASSWORD_LENGTH} caracteres, con letras y números.</p>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : 'Guardar nueva contraseña'}</button><button type="button" className="text-button" onClick={() => goToStage('idle')}>Cancelar</button></form>}{config && onConfigChange && <PinSettings config={config} onConfigChange={onConfigChange} onLock={onLock} />}<button type="button" className="danger-action account-logout" onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button></FormPage>
+}
+
+function PinSettings({ config, onConfigChange, onLock }: { config: LockConfig; onConfigChange: (next: LockConfig) => void; onLock?: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [pin, setPin] = useState('')
+  const [repeated, setRepeated] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const activo = Boolean(config.pin)
+
+  async function savePin(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    const problem = pinProblem(pin, repeated)
+    if (problem) { setError(problem); return }
+    setBusy(true)
+    setError('')
+    try {
+      onConfigChange({ ...config, pin: await createPinRecord(pin), lastActiveAt: Date.now() })
+      setPin('')
+      setRepeated('')
+      setEditing(false)
+      setMessage(activo ? '✓ PIN cambiado' : '✓ Bloqueo con PIN activado')
+    } catch {
+      setError('No se pudo guardar el PIN en este dispositivo.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function removePin() {
+    if (!window.confirm('¿Quitar el PIN? Cualquiera que coja este móvil desbloqueado podrá ver tus fiados.')) return
+    onConfigChange({ ...config, pin: null })
+    clearLockConfig()
+    setMessage('PIN quitado de este móvil.')
+  }
+
+  return <section className="pin-settings"><h2>Bloqueo con PIN</h2><p className="muted">Pide un PIN para abrir la aplicación en este móvil. No cambia tu contraseña: si cierras sesión, para volver a entrar necesitas tu email y tu contraseña.</p>{message && <p className="notice success" role="status">{message}</p>}{editing
+      ? <form onSubmit={savePin}><label>{activo ? 'PIN nuevo' : 'PIN'}<input type="password" inputMode="numeric" autoComplete="off" maxLength={PIN_MAX_LENGTH} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))} /></label><label>Repite el PIN<input type="password" inputMode="numeric" autoComplete="off" maxLength={PIN_MAX_LENGTH} value={repeated} onChange={(event) => setRepeated(event.target.value.replace(/\D/g, ''))} /></label><p className="muted">Entre {PIN_MIN_LENGTH} y {PIN_MAX_LENGTH} cifras.</p>{error && <p className="error" role="alert">{error}</p>}<div className="email-actions"><button disabled={busy}>{busy ? 'Guardando...' : 'Guardar PIN'}</button><button type="button" className="text-button" onClick={() => { setEditing(false); setPin(''); setRepeated(''); setError('') }}>Cancelar</button></div></form>
+      : <div className="pin-actions"><button type="button" className="secondary-action subtle-action" onClick={() => { setMessage(''); setEditing(true) }}>{activo ? 'Cambiar PIN' : 'Activar PIN'}</button>{activo && <button type="button" className="secondary-action subtle-action" onClick={removePin}>Quitar PIN</button>}{activo && onLock && <button type="button" className="secondary-action subtle-action" onClick={onLock}>Bloquear ahora</button>}</div>}{activo && <label className="pin-timeout">Bloquear automáticamente<select value={config.minutes} onChange={(event) => onConfigChange({ ...config, minutes: Number(event.target.value) as LockMinutes, lastActiveAt: Date.now() })}>{LOCK_OPTIONS.map((option) => <option key={option} value={option}>{lockOptionLabel(option)}</option>)}</select></label>}</section>
 }
 
 function FormPage({ title, onBack, action, leading, children }: { title: string; onBack: () => void; action?: React.ReactNode; leading?: React.ReactNode; children: React.ReactNode }) {
