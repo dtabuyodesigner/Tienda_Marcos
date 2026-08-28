@@ -192,9 +192,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
   // contra un cliente de otra tienda respondaria "falta configuracion" en vez de
   // "no existe": daria una pista al atacante y ademas haria imposible comprobar
   // que el aislamiento entre tiendas funciona mientras falte un secreto.
-  const apiKey = Deno.env.get('BREVO_API_KEY')
-  const fromEmail = Deno.env.get('ACCOUNT_EMAIL_FROM')
-  const fromName = Deno.env.get('ACCOUNT_EMAIL_FROM_NAME') || DEFAULT_FROM_NAME
+  // Se recortan los espacios: un salto de linea o un espacio colado al guardar el
+  // secreto haria que el proveedor rechazase una clave que en realidad es buena,
+  // y el sintoma seria identico al de una clave invalida.
+  const apiKey = Deno.env.get('BREVO_API_KEY')?.trim()
+  const fromEmail = Deno.env.get('ACCOUNT_EMAIL_FROM')?.trim()
+  const fromName = Deno.env.get('ACCOUNT_EMAIL_FROM_NAME')?.trim() || DEFAULT_FROM_NAME
   if (!apiKey || !fromEmail) {
     return fail(500, 'email_not_configured', 'Todavía no está configurado el envío de correos. Avisa a quien lleva la aplicación.')
   }
