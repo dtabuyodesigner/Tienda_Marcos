@@ -1,5 +1,17 @@
 # Changelog
 
+## Pendiente - Envio de resumen por email validado de extremo a extremo
+
+Prueba real contra produccion el 28 de agosto de 2026, con tienda, tendero y cliente ficticios:
+
+- La Edge Function devuelve `ok: true` y Brevo acepta el envio.
+- El correo llega a la bandeja: asunto `Tu cuenta — La Libreta de Marcos`, destinatario correcto, compra de 30,00 EUR, pago de -10,00 EUR, `Pendiente actual: 20,00 €` y `Pendiente desde hoy`.
+- Privacidad verificada sobre el mensaje entregado: sin nota privada, sin apodo, sin telefono, sin identificadores y sin rutas de fichero.
+- `account_summary_sends` registro un unico envio con su traza completa y sin el cuerpo del correo.
+- Datos de prueba eliminados: mismos recuentos que antes y cero residuos.
+
+Lo que desbloqueo el envio fue la configuracion en Brevo: una clave de API v3 valida y un remitente verificado. No hubo ningun cambio de codigo.
+
 ## Pendiente - Ajustes de redaccion
 
 - La nota del `Resumen` de la ficha mostraba comillas invertidas literales en pantalla.

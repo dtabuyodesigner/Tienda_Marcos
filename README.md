@@ -40,7 +40,7 @@ Completar `.env.local` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`. La se
 - `Resumen` en el menu de usuario muestra el estado de la tienda: pendiente total, cuentas antiguas y compras y cobros del mes.
 - Email opcional del cliente.
 - Desde `Ver cuenta`, `Compartir cuenta` permite enviar el resumen por email, abrirlo en WhatsApp o descargarlo en PDF. Siempre a mano: no hay envios automaticos ni recordatorios.
-- El envio por email sale de la Edge Function `send-account-summary` y necesita los secretos `BREVO_API_KEY` y `ACCOUNT_EMAIL_FROM` configurados en Supabase. Ver `docs/SECURITY.md`.
+- El envio por email sale de la Edge Function `send-account-summary`, con los secretos `BREVO_API_KEY` y `ACCOUNT_EMAIL_FROM` configurados en Supabase. Validado de extremo a extremo contra produccion. Ver `docs/SECURITY.md`.
 - `Añadir saldo anterior` registra la deuda que el cliente ya tenia en tickets de papel antes de empezar a usar la aplicacion. Es un unico movimiento con origen propio, no una compra inventada, y aparece en el historial como `Saldo anterior`.
 - Cuenta permite ver el email, cambiar la contrasena y cerrar sesion. El cambio de contrasena exige reautenticacion con la contrasena actual antes de mostrar los campos de contrasena nueva.
 

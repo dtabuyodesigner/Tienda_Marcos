@@ -53,6 +53,15 @@ Sin bloqueos documentados ahora mismo.
 - Incluye: pantalla `Ayuda` en el menu de usuario entre `Cuenta` y `Cerrar sesión`, con 14 preguntas reales de mostrador en bloques desplegables, y ayudas contextuales en saldo anterior, foto del ticket, anulacion y cambio de contrasena.
 - Es contenido estatico de la aplicacion: se lee sin pedir nada al servidor.
 
+### Envio del resumen de cuenta por email
+
+- Estado: **RESUELTO / VALIDADO** de extremo a extremo el 28 de agosto de 2026 contra produccion.
+- Recorrido comprobado: sesion autenticada, cliente de la propia tienda, Edge Function `ok: true`, Brevo acepta, y el correo llega de verdad a la bandeja con asunto `Tu cuenta — La Libreta de Marcos`, la compra de 30,00 EUR, el pago de -10,00 EUR, `Pendiente actual: 20,00 €` y `Pendiente desde hoy`.
+- Privacidad verificada sobre el mensaje entregado: no aparecen la nota privada, el apodo, el telefono, ningun identificador ni ninguna ruta de fichero. Solo lo que lleva el modelo compartible.
+- `account_summary_sends` registro exactamente un envio, con tienda, cliente, autor, canal, destinatario y fecha. Sin cuerpo del correo.
+- Datos de prueba eliminados sin residuos.
+- Nota sobre el remitente: `ACCOUNT_EMAIL_FROM` es `dtabuyodesigner@gmail.com`, verificado en Brevo. Como `gmail.com` no se puede firmar con DKIM desde Brevo y su DMARC es `p=REJECT`, Brevo reescribe el `From` visible a su subdominio `@11432328.brevosend.com` y deja la direccion configurada en `Reply-To`. Es el comportamiento correcto del proveedor y por eso el correo pasa SPF, DKIM y DMARC. Si algun dia se quiere que el `From` muestre un dominio propio, hay que verificar ese dominio en Brevo.
+
 ### Compartir la cuenta del cliente: PDF y WhatsApp
 
 - Estado: **RESUELTO / VALIDADO**.
@@ -102,19 +111,6 @@ Sin bloqueos documentados ahora mismo.
 - Motivo: la aplicacion debe identificar la tienda concreta, no solo el producto.
 
 ## P1 - Proxima iteracion
-
-### Envio del resumen por email
-
-- Estado: **IMPLEMENTADO Y DESPLEGADO, PENDIENTE DE SECRETO**. No se declara validado de extremo a extremo porque todavia no se ha enviado ningun correo real.
-- Hecho: Edge Function `send-account-summary` desplegada en `Marcos_Tienda`, autorizacion comprobada contra la funcion real (cross-store rechazado, cliente inexistente rechazado, datos inyectados en el cuerpo ignorados, cliente sin email avisado), tabla `account_summary_sends` con RLS, limite de reenvio de 60 segundos y bloqueo de doble envio en la interfaz.
-- **Lo que falta, y es lo unico**: una clave de API transaccional de Brevo valida. Los tres secretos ya estan configurados en Supabase, pero Brevo responde **HTTP 401** al enviar, es decir rechaza la clave. Un remitente no verificado daria 400, no 401, asi que el problema es la clave en si.
-- Tercer intento el 28 de agosto de 2026 con una clave que **el propio Dani verifico** contra `POST /v3/smtp/email` obteniendo **201** desde su maquina. Desde la Edge Function sigue devolviendo **401**. Comprobado ademas: el remitente guardado en `ACCOUNT_EMAIL_FROM` es exactamente `dtabuyodesigner@11432328.brevosend.com`, el mismo que ya entrega el correo de Auth, y la peticion coincide con el contrato de Brevo.
-- **Hipotesis principal ahora**: la clave funciona desde una IP y no desde otra. Brevo permite restringir claves por IP autorizada; una clave restringida devuelve 201 desde el portatil y 401 desde la infraestructura de Supabase, que es exactamente el sintoma. Revisar en Brevo la restriccion de IP de la clave y la lista de IPs autorizadas de la cuenta.
-- Verificacion segura de que lo guardado es lo que se probo, sin que nadie revele la clave: `supabase secrets list` publica el SHA-256 del valor. Comprobado que es sha256 plano contrastandolo con `SUPABASE_URL`. Basta comparar `printf '%s' 'LA_CLAVE' | sha256sum` con el digest que muestra el CLI.
-- Segundo intento el 28 de agosto de 2026 con una clave nueva: Brevo sigue respondiendo **401**. Se redesplego la funcion para descartar que estuviese usando el valor antiguo, y se verifico que la peticion coincide exactamente con el contrato documentado de Brevo (`POST https://api.brevo.com/v3/smtp/email`, cabecera `api-key`, cuerpo con `sender`/`to`/`subject`/`htmlContent`/`textContent`). El fallo esta en la credencial, no en el codigo.
-- Sospecha principal: se ha guardado la clave SMTP (la que usa Supabase Auth, empieza por `xsmtpsib-`) en vez de una clave de API v3 (empieza por `xkeysib-`). Son credenciales distintas y la API transaccional solo acepta la segunda. Se crea en Brevo: SMTP & API -> API Keys -> Generate a new API key.
-- Prueba de extremo a extremo realizada el 28 de agosto de 2026 desde produccion, con tienda, tendero y cliente ficticios: sesion correcta, cliente resuelto, resumen construido y llamada a Brevo realizada. Fallo unicamente en el envio, con 401 del proveedor. Datos de prueba eliminados sin residuos.
-- Comprobado que la funcion llega hasta el punto exacto del envio: con un cliente propio con email responde `email_not_configured`, no un fallo anterior.
 
 ### Identidad visual / logo de la tienda
 
