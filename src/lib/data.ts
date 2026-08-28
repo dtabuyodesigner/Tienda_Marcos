@@ -32,23 +32,32 @@ export function hasActiveOpeningBalance(tickets: Ticket[]): boolean {
 }
 
 export function summarizeClients(clients: Client[], tickets: Ticket[], payments: Payment[]): ClientSummary[] {
-  return clients.map((client) => ({
-    ...client,
-    balance: calculateActiveBalance(
-      tickets.filter((ticket) => ticket.client_id === client.id),
-      payments.filter((payment) => payment.client_id === client.id),
-    ),
-    lastActivityAt: latestActivityAt(client.id, tickets, payments),
-  }))
+  // Se agrupa una vez en lugar de recorrer los dos arrays completos por cliente:
+  // con cientos de clientes eso era coste cuadratico por nada.
+  const ticketsByClient = groupByClient(tickets)
+  const paymentsByClient = groupByClient(payments)
+  return clients.map((client) => {
+    const propios = ticketsByClient.get(client.id) ?? []
+    const pagos = paymentsByClient.get(client.id) ?? []
+    const fechas = [...propios.map((t) => t.created_at), ...pagos.map((p) => p.created_at)]
+    return {
+      ...client,
+      balance: calculateActiveBalance(propios, pagos),
+      lastActivityAt: fechas.sort((a, b) => b.localeCompare(a))[0] ?? null,
+    }
+  })
 }
 
-function latestActivityAt(clientId: string, tickets: Ticket[], payments: Payment[]): string | null {
-  const dates = [
-    ...tickets.filter((ticket) => ticket.client_id === clientId).map((ticket) => ticket.created_at),
-    ...payments.filter((payment) => payment.client_id === clientId).map((payment) => payment.created_at),
-  ]
-  return dates.sort((a, b) => b.localeCompare(a))[0] ?? null
+function groupByClient<T extends { client_id: string }>(items: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>()
+  for (const item of items) {
+    const lista = map.get(item.client_id)
+    if (lista) lista.push(item)
+    else map.set(item.client_id, [item])
+  }
+  return map
 }
+
 
 async function currentProfile(user: User): Promise<{ store_id: string; display_name: string | null }> {
   const { data, error } = await supabase.from('profiles').select('store_id, display_name').eq('id', user.id).single()

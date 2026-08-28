@@ -43,9 +43,14 @@ export type AgingResult = {
 
 const EMPTY_AGING: AgingResult = { balance: 0, slices: [], oldestAt: null, oldestCents: 0, ageInDays: null, approximate: false }
 
+// Construir un Intl.DateTimeFormat cuesta mucho mas que usarlo. Como aqui se
+// llama una vez por movimiento, crearlo en cada llamada se comia el 90% del
+// tiempo de abrir Inicio con cientos de clientes. Se crea una sola vez.
+const DATE_FORMAT = new Intl.DateTimeFormat('en-CA', { timeZone: STORE_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
+
 /** Fecha civil `AAAA-MM-DD` en la zona de la tienda. */
 function storeDate(value: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: STORE_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(value)
+  return DATE_FORMAT.format(value)
 }
 
 /**
