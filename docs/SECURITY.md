@@ -64,3 +64,19 @@ La Edge Function `send-account-summary` es el unico camino por el que sale un co
 - Secretos server-side: `BREVO_API_KEY`, `ACCOUNT_EMAIL_FROM`, `ACCOUNT_EMAIL_FROM_NAME`. Se configuran con `supabase secrets set` y no aparecen en el repositorio ni en el paquete publicado.
 - No se registran en logs la clave, el JWT, el destinatario ni el cuerpo del correo.
 - `account_summary_sends` deja traza del envio y limita el reenvio inmediato. No guarda el contenido.
+
+## Bloqueo Local Con PIN
+
+El PIN es una defensa del dispositivo, no de la cuenta. Solo evita que quien coja el movil desbloqueado vea los fiados; la sesion de Supabase sigue viva y la seguridad real la sigue dando Auth.
+
+- No se almacena el PIN. Se guarda `salt` aleatorio de 16 bytes y la derivacion PBKDF2-SHA256 con 200.000 iteraciones, en `localStorage` de ese dispositivo y en ningun otro sitio.
+- Ni el PIN ni su derivacion llegan a la base de datos. No hay tabla ni columna nueva.
+- La verificacion compara en tiempo constante y usa las iteraciones guardadas en el propio registro.
+- Intentos fallidos con espera creciente y tope.
+- La unica salida sin PIN es cerrar sesion y volver a autenticarse.
+
+## Cache Del Service Worker
+
+Auditado: el service worker **no** tiene `runtimeCaching`. Solo precachea el armazon (HTML, CSS, JS, iconos y manifest). Las llamadas a Supabase (REST, Auth, Storage y Edge Functions) son peticiones cross-origin que ninguna ruta del service worker intercepta, asi que **no queda ni un nombre, ni un telefono ni un saldo en Cache Storage**. Las fotos se sirven con URL firmada temporal y tampoco se cachean.
+
+Cabeceras HTTP: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` y `Content-Security-Policy: frame-ancestors 'none'`.

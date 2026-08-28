@@ -53,6 +53,28 @@ Sin bloqueos documentados ahora mismo.
 - Incluye: pantalla `Ayuda` en el menu de usuario entre `Cuenta` y `Cerrar sesión`, con 14 preguntas reales de mostrador en bloques desplegables, y ayudas contextuales en saldo anterior, foto del ticket, anulacion y cambio de contrasena.
 - Es contenido estatico de la aplicacion: se lee sin pedir nada al servidor.
 
+### Filtro Con deuda / Todos
+
+- Estado: **RESUELTO**.
+- Inicio lleva dos botones con contador: `Todos (48)` y `Con deuda (7)`. Por defecto **Todos**, que es lo que Marcos ya conocia: esconderle clientes sin avisar habria sido la sorpresa cara.
+- La busqueda funciona dentro del filtro activo. Si busca a alguien que existe pero esta filtrado, se le dice `No aparece porque no tiene deuda` con un `Ver todos` al lado, en vez de dejarle pensando que ha desaparecido.
+- La preferencia no se guarda: vuelve a `Todos` en cada sesion. Un filtro pegajoso que oculta clientes es peor que volver a pulsarlo.
+
+### Comportamiento con cientos de clientes
+
+- Estado: **RESUELTO / MEDIDO**.
+- Probado con 100, 300 y 500 clientes y hasta ~5.500 movimientos, con datos sinteticos deterministas.
+- Se encontro y se arreglo un problema real: abrir Inicio con 500 clientes costaba entre 1,5 y 5,7 segundos. El 93% del tiempo se iba en construir un `Intl.DateTimeFormat` nuevo por cada movimiento. Cacheando el formateador y agrupando los movimientos por cliente una sola vez, la bateria completa paso de **30,6 s a ~1,0 s**.
+- Verificado ademas que el total pendiente agregado coincide exactamente con la suma cliente a cliente. Un descuadre a 500 clientes seria mas grave que un milisegundo.
+- No se ha metido virtualizacion ni paginacion: a 500 clientes la lista va bien y no hacia falta.
+
+### PIN local y bloqueo por inactividad
+
+- Estado: **RESUELTO**.
+- PIN de 4 a 6 cifras, opcional, en `Cuenta -> Bloqueo con PIN`. Activar, cambiar, quitar y bloquear ahora.
+- Bloqueo automatico configurable: Nunca, 1, 5, 15 o 30 minutos.
+- Alcance documentado en `docs/DECISIONES.md`: el PIN tapa la interfaz de ESE movil. No cierra la sesion de Supabase ni sustituye a la contrasena.
+
 ### Envio del resumen de cuenta por email
 
 - Estado: **RESUELTO / VALIDADO** de extremo a extremo el 28 de agosto de 2026 contra produccion.
@@ -110,6 +132,18 @@ Sin bloqueos documentados ahora mismo.
 - Incluye: `Covirán · San Miguel de las Dueñas · El Bierzo · León` como subtitulo de la cabecera y alineacion coherente de las acciones de Inicio.
 - Motivo: la aplicacion debe identificar la tienda concreta, no solo el producto.
 
+## P0 - BLOQUEANTE antes de entregar a Marcos
+
+### El correo de confirmacion de Auth no se entrega
+
+- Estado: **BLOQUEANTE**. Sin esto Marcos no puede crear su cuenta.
+- Sintoma: el alta funciona y Auth marca `confirmation_sent_at`, pero el correo no llega nunca y `email_confirmed_at` se queda vacio.
+- Evidencia: el ultimo correo de confirmacion entregado fue el 28 de agosto a las 07:24 UTC. Los intentos de las 07:41 y las 11:04 no llegaron: buscados por destinatario, asunto, remitente y sin filtros, en bandeja, spam y papelera.
+- Lo que NO es: no es la cuenta de Brevo ni la clave. El resumen de cuenta, que sale por la **API v3** de Brevo, se entrego correctamente a las 10:32 del mismo dia.
+- Hipotesis principal: el remitente del **SMTP de Auth** en Supabase se cambio a `dtabuyodesigner@gmail.com`. Por SMTP, Brevo relaya el `From` tal cual, y `gmail.com` publica DMARC `p=REJECT`, asi que Gmail rechaza el mensaje en la propia entrega. Por API v3 no pasa porque ahi Brevo **reescribe** el `From` a su subdominio, cosa que se comprobo en las cabeceras del resumen entregado.
+- Comprobacion: Supabase -> Authentication -> SMTP Settings -> `Sender email`. Si pone `dtabuyodesigner@gmail.com`, devolverlo a `dtabuyodesigner@11432328.brevosend.com`, que es el remitente con el que los correos SI llegaban. Confirmar despues en Brevo -> Transactional -> Logs el estado de los intentos de las 07:41 y 11:04.
+- No se ha tocado la configuracion de Auth: se diagnostica, no se cambia a ciegas.
+
 ## P1 - Proxima iteracion
 
 ### Identidad visual / logo de la tienda
@@ -121,38 +155,6 @@ Sin bloqueos documentados ahora mismo.
 - Estado: pendiente.
 - Restriccion: no utilizar imagenes inventadas ni asumir que se puede usar el logotipo oficial de Coviran sin revisar primero que material aporta Marcos y con que permisos.
 - Dependencias: material grafico real de la tienda.
-
-### PIN local de acceso rapido
-
-- Descripcion: desbloqueo local con PIN de 4 a 6 cifras solo cuando ya exista una sesion Supabase valida.
-- Utilidad: acelerar el uso diario en movil.
-- Prioridad: P1.
-- Estado: pendiente.
-- Dependencias: prueba real en movil y diseno de almacenamiento seguro.
-
-### Bloqueo automatico por inactividad
-
-- Descripcion: bloquear la aplicacion tras un periodo configurable de inactividad, desbloqueable mediante PIN mientras la sesion Supabase siga siendo valida.
-- Utilidad: reduce el riesgo de que un movil desatendido en el mostrador quede abierto sobre datos economicos de clientes.
-- Prioridad: P1.
-- Estado: pendiente, no implementado.
-- Dependencias: implementar antes el PIN local; el bloqueo no sustituye a Supabase Auth ni relaja RLS.
-
-### Revisar comportamiento con cientos de clientes
-
-- Descripcion: validar orden, busqueda y posible agrupacion cuando la libreta tenga muchos clientes.
-- Utilidad: mantener rapidez detras del mostrador.
-- Prioridad: P1.
-- Estado: pendiente.
-- Dependencias: datos reales o simulacion suficiente de volumen.
-
-### Filtro Con deuda / Todos
-
-- Descripcion: posible control para separar clientes con deuda de clientes a cero.
-- Utilidad: reducir ruido sin ocultar clientes que pueden volver a fiar.
-- Prioridad: P1.
-- Estado: pendiente.
-- Dependencias: observar si el listado real crece lo suficiente.
 
 ### Mejoras que salgan de la prueba real de Marcos
 

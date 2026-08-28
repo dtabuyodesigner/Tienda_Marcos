@@ -145,6 +145,28 @@
 - Siempre lo disparara Marcos a mano. Ningun envio automatico.
 - Se valorara registrar cuando se envio, a que email, que cliente y que usuario lo hizo. Sin convertir la aplicacion en un CRM.
 
+## Bloqueo Local Con PIN
+
+- **Que es y que no es.** El PIN tapa la interfaz en ESE movil. NO cierra la sesion de Supabase, NO sustituye a la contrasena y NO cambia nada en la cuenta. La seguridad real sigue siendo Auth. Sirve para lo que pasa de verdad: que alguien coja el movil desbloqueado en el mostrador y vea los fiados de todo el pueblo.
+- **No se guarda el PIN.** Se guarda `salt` aleatorio y la derivacion PBKDF2-SHA256 con 200.000 iteraciones, solo en `localStorage` de ese dispositivo. Ni el PIN ni su hash viajan a la base de datos: no hay tabla nueva, porque un PIN es configuracion del aparato, no del negocio. La comparacion es de tiempo constante.
+- **Salida ante olvido**: `Cerrar sesión` desde la propia pantalla de bloqueo, y volver a entrar con email y contrasena. No hay puerta trasera que revele o borre el PIN sin autenticarse.
+- **Intentos fallidos**: tres gratis, y a partir de ahi espera creciente con tope de unos minutos. Suficiente para que probar a mano no compense, sin convertirlo en un cajero automatico.
+- **Bloqueo automatico** configurable: Nunca, 1, 5, 15 o 30 minutos. Se decide comparando **marcas de tiempo**, no con temporizadores: en segundo plano los `setTimeout` se congelan, asi que al volver hay que mirar el reloj de verdad.
+- **Al recargar o abrir en frio se bloquea** si hay PIN, porque no sabemos cuando fue la ultima actividad y el lado seguro es pedirlo.
+
+## Filtro De Clientes
+
+- Dos botones con contador en Inicio: `Todos` y `Con deuda`. **Por defecto Todos**, que es el comportamiento que Marcos ya conocia. Empezar escondiendo clientes seria la sorpresa cara; el filtro es una ayuda opcional para cuando la lista crezca.
+- La busqueda actua dentro del filtro activo. Si busca a alguien que existe pero esta filtrado, se le explica (`No aparece porque no tiene deuda`) con un `Ver todos`, en vez de dejarle creyendo que ha desaparecido.
+- La preferencia no se guarda entre sesiones, a proposito: un filtro pegajoso que oculta clientes es peor que volver a pulsarlo.
+
+## Rendimiento Con Cientos De Clientes
+
+- Medido con 100, 300 y 500 clientes y datos sinteticos deterministas.
+- Se encontro un cuello de botella real: construir un `Intl.DateTimeFormat` en cada llamada, una vez por movimiento, se llevaba el 93% del tiempo de abrir Inicio. Los formateadores pasan a ser constantes de modulo.
+- Ademas, `buildStoreOverview` y `summarizeClients` filtraban los arrays completos de movimientos por cada cliente, lo que era coste cuadratico. Ahora se agrupa por cliente una sola vez.
+- Resultado: la bateria de escala paso de 30,6 s a ~1,0 s. No se ha metido virtualizacion ni paginacion porque a 500 clientes la lista va bien; anadirlas habria sido complejidad sin evidencia.
+
 ## Compartir La Cuenta Del Cliente
 
 - Marcos puede compartir con un cliente el resumen de su cuenta por **email, WhatsApp o PDF**, siempre a mano. No hay ningun envio automatico, ni recordatorios, ni campanas.

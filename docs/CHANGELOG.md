@@ -1,5 +1,37 @@
 # Changelog
 
+## Pendiente - Preparacion para la entrega a Marcos
+
+### Rendimiento
+
+- Los `Intl.DateTimeFormat` pasan a ser constantes de modulo: construirlos por movimiento se llevaba el 93% del tiempo de abrir Inicio.
+- `buildStoreOverview` y `summarizeClients` agrupan los movimientos por cliente una vez, en lugar de filtrar los arrays completos por cada cliente.
+- La bateria de escala con 100/300/500 clientes paso de 30,6 s a ~1,0 s. Umbrales de regresion ajustados a la nueva realidad.
+
+### Filtro
+
+- Inicio lleva `Todos` y `Con deuda` con contador. Por defecto Todos. La busqueda respeta el filtro y explica por que alguien no aparece.
+
+### Bloqueo con PIN
+
+- PIN opcional de 4 a 6 cifras con PBKDF2-SHA256 y sal, guardado solo en el dispositivo. Nunca el PIN en claro, nunca en la base de datos.
+- Bloqueo automatico configurable (Nunca, 1, 5, 15, 30 minutos), decidido por marcas de tiempo para que funcione al volver de segundo plano. Al recargar con PIN activo, se bloquea.
+- Pantalla de bloqueo que tapa la interfaz entera, con espera creciente ante fallos y salida por `Cerrar sesión`.
+
+### PWA
+
+- `lang: es` y `dir: ltr` en el manifest.
+- Los assets salen del rewrite catch-all de Vercel, para que un fichero que falte de un despliegue anterior de un 404 limpio en vez de HTML con 200.
+- Cabeceras `nosniff`, `Referrer-Policy` y `frame-ancestors 'none'`.
+
+### Auth
+
+- Diagnosticado, no resuelto: el correo de confirmacion no se entrega. Detalle y siguiente paso en `docs/PENDIENTES.md`.
+
+### Documentacion
+
+- Nuevo `docs/CHECKLIST-ENTREGA-MARCOS.md`.
+
 ## Pendiente - Envio de resumen por email validado de extremo a extremo
 
 Prueba real contra produccion el 28 de agosto de 2026, con tienda, tendero y cliente ficticios:

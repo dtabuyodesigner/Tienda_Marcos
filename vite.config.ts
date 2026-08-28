@@ -16,6 +16,8 @@ export default defineConfig({
       },
       manifest: {
         name: 'La Libreta de Marcos',
+        lang: 'es',
+        dir: 'ltr',
         short_name: 'Libreta',
         description: 'Gestión de compras fiadas de la tienda',
         theme_color: '#002446',
