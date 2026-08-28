@@ -55,6 +55,10 @@ type Notice = { tone: 'success' | 'error'; title?: string; message: string }
 export const SUCCESS_NOTICE_MS = 6000
 type DisplayMovement = (Ticket & { kind: 'ticket' }) | (Payment & { kind: 'payment' })
 
+function AuthBrand() {
+  return <div className="auth-brand"><img src="/logo-full.png" alt="La Libreta de Marcos" /></div>
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
@@ -151,7 +155,7 @@ function LockScreen({ record, onUnlock }: { record: NonNullable<LockConfig['pin'
     setError('Ese PIN no es correcto.')
   }
 
-  return <main className="shell lock-shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Introduce tu PIN</h1><form onSubmit={submit}><label>PIN<input type="password" inputMode="numeric" autoComplete="off" autoFocus maxLength={PIN_MAX_LENGTH} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))} /></label>{error && <p className="error" role="alert">{error}</p>}{espera > 0 && <p className="error" role="alert">Has fallado varias veces. Espera {Math.ceil(espera / 1000)} segundos.</p>}<button disabled={busy || espera > 0 || pin.length < PIN_MIN_LENGTH}>{busy ? 'Comprobando...' : 'Desbloquear'}</button><button type="button" className="text-button" onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button></form></section></main>
+  return <main className="shell lock-shell"><section className="panel login"><AuthBrand /><h1>Introduce tu PIN</h1><form onSubmit={submit}><label>PIN<input type="password" inputMode="numeric" autoComplete="off" autoFocus maxLength={PIN_MAX_LENGTH} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))} /></label>{error && <p className="error" role="alert">{error}</p>}{espera > 0 && <p className="error" role="alert">Has fallado varias veces. Espera {Math.ceil(espera / 1000)} segundos.</p>}<button disabled={busy || espera > 0 || pin.length < PIN_MIN_LENGTH}>{busy ? 'Comprobando...' : 'Desbloquear'}</button><button type="button" className="text-button" onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button></form></section></main>
 }
 
 export function Login() {
@@ -174,7 +178,7 @@ export function Login() {
 
   if (forgotPassword) return <ForgotPassword initialEmail={email} onBack={() => setForgotPassword(false)} />
   if (creatingAccount) return <SignUp onBack={() => setCreatingAccount(false)} />
-  return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Tu tienda, en orden.</h1><p className="muted">Accede para gestionar tus compras fiadas.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Entrando...' : 'Iniciar sesión'}</button><button type="button" className="text-button forgot-link" onClick={() => setForgotPassword(true)}>¿Has olvidado tu contraseña?</button></form><div className="login-alt"><span className="muted">¿Todavía no tienes cuenta?</span><button type="button" className="secondary-action subtle-action" onClick={() => setCreatingAccount(true)}>Crear mi cuenta</button></div></section></main>
+  return <main className="shell"><section className="panel login"><AuthBrand /><h1>Tu tienda, en orden.</h1><p className="muted">Accede para gestionar tus compras fiadas.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Entrando...' : 'Iniciar sesión'}</button><button type="button" className="text-button forgot-link" onClick={() => setForgotPassword(true)}>¿Has olvidado tu contraseña?</button></form><div className="login-alt"><span className="muted">¿Todavía no tienes cuenta?</span><button type="button" className="secondary-action subtle-action" onClick={() => setCreatingAccount(true)}>Crear mi cuenta</button></div></section></main>
 }
 
 function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
@@ -199,7 +203,7 @@ function ForgotPasswordForm({ initialEmail }: { initialEmail: string }) {
 }
 
 function ForgotPassword({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
-  return <main className="shell"><section className="panel login"><button className="back" onClick={onBack}>← Volver</button><p className="eyebrow">La Libreta de Marcos</p><h1>Recuperar contraseña</h1><ForgotPasswordForm initialEmail={initialEmail} /></section></main>
+  return <main className="shell"><section className="panel login"><button className="back" onClick={onBack}>← Volver</button><AuthBrand /><h1>Recuperar contraseña</h1><ForgotPasswordForm initialEmail={initialEmail} /></section></main>
 }
 
 /**
@@ -251,9 +255,9 @@ function SignUp({ onBack }: { onBack: () => void }) {
     setBusy(false)
   }
 
-  if (confirmEmail) return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>✓ Cuenta creada</h1><p className="notice success" role="status">Te hemos enviado un enlace para confirmar tu email. Ábrelo desde este móvil y ya podrás entrar.</p><button type="button" className="secondary-action" onClick={onBack}>Volver a iniciar sesión</button></section></main>
+  if (confirmEmail) return <main className="shell"><section className="panel login"><AuthBrand /><h1>✓ Cuenta creada</h1><p className="notice success" role="status">Te hemos enviado un enlace para confirmar tu email. Ábrelo desde este móvil y ya podrás entrar.</p><button type="button" className="secondary-action" onClick={onBack}>Volver a iniciar sesión</button></section></main>
 
-  return <main className="shell"><section className="panel login"><button className="back" onClick={onBack}>← Volver</button><p className="eyebrow">La Libreta de Marcos</p><h1>Crear mi cuenta</h1><p className="muted">La Libreta todavía es privada: necesitas un código de invitación.</p><form onSubmit={submit}><label>Tu nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Nombre de la tienda<input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Covirán San Miguel" required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><label>Repetir contraseña<input type="password" autoComplete="new-password" value={repeatedPassword} onChange={(event) => setRepeatedPassword(event.target.value)} required /></label><label>Código de invitación<input value={invite} onChange={(event) => setInvite(event.target.value)} autoCapitalize="characters" spellCheck={false} required /></label><p className="muted">Al menos {MIN_PASSWORD_LENGTH} caracteres, con letras y números.</p>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Creando cuenta...' : 'Crear mi cuenta'}</button></form></section></main>
+  return <main className="shell"><section className="panel login"><button className="back" onClick={onBack}>← Volver</button><AuthBrand /><h1>Crear mi cuenta</h1><p className="muted">La Libreta todavía es privada: necesitas un código de invitación.</p><form onSubmit={submit}><label>Tu nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required /></label><label>Nombre de la tienda<input value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="Covirán San Miguel" required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><label>Repetir contraseña<input type="password" autoComplete="new-password" value={repeatedPassword} onChange={(event) => setRepeatedPassword(event.target.value)} required /></label><label>Código de invitación<input value={invite} onChange={(event) => setInvite(event.target.value)} autoCapitalize="characters" spellCheck={false} required /></label><p className="muted">Al menos {MIN_PASSWORD_LENGTH} caracteres, con letras y números.</p>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Creando cuenta...' : 'Crear mi cuenta'}</button></form></section></main>
 }
 
 function ResetPassword({ onDone }: { onDone: () => void }) {
@@ -273,7 +277,7 @@ function ResetPassword({ onDone }: { onDone: () => void }) {
     setBusy(false)
   }
 
-  return <main className="shell"><section className="panel login"><p className="eyebrow">La Libreta de Marcos</p><h1>Nueva contraseña</h1><form onSubmit={submit}><label>Nueva contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : 'Guardar contraseña'}</button></form></section></main>
+  return <main className="shell"><section className="panel login"><AuthBrand /><h1>Nueva contraseña</h1><form onSubmit={submit}><label>Nueva contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label>{error && <p className="error" role="alert">{error}</p>}<button disabled={busy}>{busy ? 'Guardando...' : 'Guardar contraseña'}</button></form></section></main>
 }
 
 export function Workspace({ user, config, onConfigChange, onLock }: { user: User; config?: LockConfig; onConfigChange?: (next: LockConfig) => void; onLock?: () => void }) {
